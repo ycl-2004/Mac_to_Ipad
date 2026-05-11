@@ -1085,7 +1085,7 @@ struct DetailPanelView: View {
                         Text("Extended Display").tag(true)
                         Text("Mirror Built-in").tag(false)
                     }
-                    InfoTip(text: "Extended creates a separate virtual monitor. Mirror duplicates your main display.")
+                    InfoTip(text: "Extended creates a separate BetterCast display. Mirror sends the Mac's built-in screen instead.")
                 }
 
                 HStack {
@@ -1095,25 +1095,25 @@ struct DetailPanelView: View {
                         }
                     }
                     .disabled(!client.useVirtualDisplay)
-                    InfoTip(text: "Resolution of the virtual display. Higher resolutions use more bandwidth.")
+                    InfoTip(text: "Best Fit is the default iPad mode: 1344 x 934 logical size with HiDPI backing and native capture.")
                 }
 
                 HStack {
                     Toggle("Retina (HiDPI)", isOn: $client.isRetina)
-                        .disabled(!client.useVirtualDisplay)
-                    InfoTip(text: "Doubles pixel density. Sharper text but uses more bandwidth.")
+                        .disabled(!client.useVirtualDisplay || client.selectedResolution == VirtualDisplayManager.receiverBestFitResolution)
+                    InfoTip(text: "Adds a Retina-style backing store for sharper text. Best Fit already uses HiDPI.")
                 }
 
                 HStack {
                     Slider(value: $client.displayBrightness, in: 0...1, step: 0.05) {
                         Text("Brightness")
                     }
-                    InfoTip(text: "Adjusts the brightness of your built-in display.")
+                    InfoTip(text: "Adjusts the Mac display brightness when the hardware exposes brightness control.")
                 }
 
                 HStack {
                     Toggle("Audio Streaming", isOn: $client.audioStreamingEnabled)
-                    InfoTip(text: "Private build default is off. Enable only when you want Mac audio on the iPad.")
+                    InfoTip(text: "Sends Mac system audio with the video stream. Leave it off when you only need the iPad as a silent display.")
                 }
 
                 Button("Arrange Displays") {
@@ -1152,17 +1152,24 @@ struct DetailPanelView: View {
 
                 HStack {
                     Toggle("Auto-Connect", isOn: $client.autoConnect)
-                    InfoTip(text: "Automatically connect to your paired iPad receiver when it appears.")
+                    InfoTip(text: "Connects to the paired receiver automatically when it appears on the local network.")
                 }
 
-                LabeledContent("Mode") {
-                    Text("Apple P2P / AWDL first")
-                        .foregroundStyle(.secondary)
+                HStack {
+                    Picker("Mode", selection: $client.interfacePreference) {
+                        ForEach(NetworkInterfacePreference.allCases) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                    InfoTip(text: "Controls the network path for new connections: Auto can fall back, P2P forces Apple direct link, Router uses Wi-Fi, Cable prefers wired networking.")
                 }
 
-                LabeledContent("Protocol") {
-                    Text("Private TCP only")
-                        .foregroundStyle(.secondary)
+                HStack {
+                    LabeledContent("Protocol") {
+                        Text("Private TCP only")
+                            .foregroundStyle(.secondary)
+                    }
+                    InfoTip(text: "This private build uses one authenticated TCP stream for video, input, heartbeat, and optional audio.")
                 }
 
                 HStack {
@@ -1171,7 +1178,7 @@ struct DetailPanelView: View {
                             Text(quality.name).tag(quality)
                         }
                     }
-                    InfoTip(text: "Higher quality uses more bandwidth. Use Low/Medium on WiFi, High/Ultra on P2P or cable.")
+                    InfoTip(text: "Raises video bitrate to reduce compression. It cannot restore detail lost by choosing a low display resolution.")
                 }
 
                 if client.isConnected {
@@ -1855,12 +1862,13 @@ struct DeviceDetailView: View {
                             Text(res.name).tag(res)
                         }
                     }
-                    InfoTip(text: "Resolution of the virtual display. Higher resolutions use more bandwidth.")
+                    InfoTip(text: "Best Fit is tuned for the iPad: compact UI size with HiDPI/native capture for sharper text.")
                 }
 
                 HStack {
                     Toggle("Retina (HiDPI)", isOn: $client.isRetina)
-                    InfoTip(text: "Doubles pixel density. Sharper text but uses more bandwidth.")
+                        .disabled(client.selectedResolution == VirtualDisplayManager.receiverBestFitResolution)
+                    InfoTip(text: "Sharper text for manual resolutions. Best Fit already enables HiDPI automatically.")
                 }
             }
 
@@ -1871,7 +1879,7 @@ struct DeviceDetailView: View {
                             Text(quality.name).tag(quality)
                         }
                     }
-                    InfoTip(text: "Higher quality uses more bandwidth. Use Low/Medium on WiFi, High/Ultra on P2P or cable.")
+                    InfoTip(text: "Higher bitrate reduces H.264 compression artifacts. Native Max needs a strong direct or wired connection.")
                 }
 
                 HStack {
@@ -1879,7 +1887,7 @@ struct DeviceDetailView: View {
                         get: { display.audioEnabled },
                         set: { client.setAudioEnabled($0, for: display.id) }
                     ))
-                    InfoTip(text: "Streams system audio to this receiver.")
+                    InfoTip(text: "Sends Mac system audio to this receiver together with the screen stream.")
                 }
             }
 
@@ -1971,7 +1979,7 @@ struct DiscoveredDeviceView: View {
                         }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.small)
-                        InfoTip(text: "Streams via USB using Android Debug Bridge. Highest quality with no network needed. Plug in your Android device first.")
+                        InfoTip(text: "Uses Android Debug Bridge over USB. Best Android quality, no Wi-Fi path required.")
                     }
 
                     HStack {
@@ -1991,7 +1999,7 @@ struct DiscoveredDeviceView: View {
                         .buttonStyle(.borderedProminent)
                         .controlSize(.small)
                         .disabled(client.adbInProgress)
-                        InfoTip(text: "Wireless ADB tunnel. Connect USB once to pair, then unplug and stream wirelessly at full quality.")
+                        InfoTip(text: "Uses a wireless ADB tunnel. Pair once over USB first, then continue over Wi-Fi.")
                     }
                 }
 
@@ -2011,7 +2019,7 @@ struct DiscoveredDeviceView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
-                    InfoTip(text: isAndroid ? "Connects directly over WiFi without ADB. Lower FPS but no USB setup required." : "Connects over your local network. Apple devices use AWDL peer-to-peer when available for best performance.")
+                    InfoTip(text: isAndroid ? "Connects over Wi-Fi without ADB. Easier setup, usually lower quality than USB." : "Connects over local network. Apple receivers use direct AWDL when the selected mode allows it.")
                 }
             }
 
@@ -2030,12 +2038,13 @@ struct DiscoveredDeviceView: View {
                             Text(res.name).tag(res)
                         }
                     }
-                    InfoTip(text: "Resolution of the virtual display. Higher resolutions use more bandwidth.")
+                    InfoTip(text: "Best Fit is the iPad default: compact logical size with a sharper HiDPI backing.")
                 }
 
                 HStack {
                     Toggle("Retina (HiDPI)", isOn: $client.isRetina)
-                    InfoTip(text: "Doubles pixel density. Sharper text but uses more bandwidth.")
+                        .disabled(client.selectedResolution == VirtualDisplayManager.receiverBestFitResolution)
+                    InfoTip(text: "Sharper text for manual resolutions. Best Fit already enables HiDPI automatically.")
                 }
             }
 
@@ -2046,12 +2055,12 @@ struct DiscoveredDeviceView: View {
                             Text(quality.name).tag(quality)
                         }
                     }
-                    InfoTip(text: "Higher quality uses more bandwidth. Use Low/Medium on WiFi, High/Ultra on P2P or cable.")
+                    InfoTip(text: "Raises H.264 bitrate. It improves compression quality but cannot replace real display pixels.")
                 }
 
                 HStack {
                     Toggle("Audio Streaming", isOn: $client.audioStreamingEnabled)
-                    InfoTip(text: "Streams system audio to the receiver. Requires a compatible receiver.")
+                    InfoTip(text: "Sends Mac system audio to the receiver with the video stream.")
                 }
             }
         }
@@ -2106,15 +2115,30 @@ struct InfoTip: View {
         } label: {
             Image(systemName: "info.circle")
                 .foregroundStyle(.secondary)
-                .font(.system(size: 12))
+                .font(.system(size: 12, weight: .medium))
+                .frame(width: 18, height: 18)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .popover(isPresented: $isShowing, arrowEdge: .trailing) {
-            Text(text)
-                .font(.caption)
-                .padding(10)
-                .frame(maxWidth: 260)
-                .fixedSize(horizontal: false, vertical: true)
+        .help(text)
+        .popover(isPresented: $isShowing, arrowEdge: .top) {
+            ScrollView {
+                Text(text)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.primary)
+                    .lineSpacing(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+            }
+            .frame(
+                minWidth: 260,
+                idealWidth: 260,
+                maxWidth: 260,
+                minHeight: 44,
+                idealHeight: 68,
+                maxHeight: 120,
+                alignment: .topLeading
+            )
         }
     }
 }
@@ -2159,6 +2183,7 @@ enum StreamQuality: Int, CaseIterable, Identifiable {
     case high = 20_000_000
     case ultra = 50_000_000
     case extreme = 100_000_000
+    case nativeMax = 150_000_000
     
     var id: Int { self.rawValue }
     var name: String {
@@ -2168,6 +2193,7 @@ enum StreamQuality: Int, CaseIterable, Identifiable {
         case .high: return "High (20 Mbps)"
         case .ultra: return "Ultra (50 Mbps)"
         case .extreme: return "Extreme (100 Mbps)"
+        case .nativeMax: return "Native Max (150 Mbps)"
         }
     }
 }
@@ -2179,6 +2205,17 @@ enum NetworkInterfacePreference: String, CaseIterable, Identifiable {
     case wiredCable = "USB / Thunderbolt Cable"
 
     var id: String { self.rawValue }
+}
+
+private struct ReceiverDisplaySize {
+    let reportedWidth: Int
+    let reportedHeight: Int
+    let logicalWidth: Int
+    let logicalHeight: Int
+    let backingWidth: Int
+    let backingHeight: Int
+    let captureWidth: Int
+    let captureHeight: Int
 }
 
 // Per-connection pipeline: each device gets its own virtual display, screen capture, and encoder
@@ -2258,7 +2295,13 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
     @Published var connectedServices: [DiscoveredService] = []
     private var connectingServiceNames: Set<String> = [] // Prevent double-connect race
     @Published var useVirtualDisplay: Bool = true // Toggle between mirroring and extended display
-    @Published var audioStreamingEnabled: Bool = false // Master toggle for audio streaming
+    @Published var audioStreamingEnabled: Bool = false { // Master toggle for audio streaming
+        didSet {
+            if oldValue != audioStreamingEnabled && isConnected {
+                updateStreamResolution()
+            }
+        }
+    }
     @Published var displayBrightness: Float = Float(DisplayBrightnessControl.getBrightness()) {
         didSet { DisplayBrightnessControl.setBrightness(Double(displayBrightness)) }
     }
@@ -2291,7 +2334,7 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
     private var lastStatsTime: Date = Date()
     
     // Settings
-    @Published var selectedResolution: VirtualDisplayManager.Resolution = VirtualDisplayManager.defaultResolutions[1]
+    @Published var selectedResolution: VirtualDisplayManager.Resolution = VirtualDisplayManager.receiverBestFitResolution
     @Published var isRetina: Bool = false
     @Published var connectionType: String = "TCP" {
         didSet {
@@ -2781,9 +2824,9 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         let parameters = NWParameters(tls: nil, tcp: tcpOptions)
         parameters.serviceClass = .interactiveVideo
 
-        // For Apple devices, prefer the P2P endpoint if available (AWDL low-latency)
+        // For Apple devices, prefer the P2P endpoint if allowed by the selected mode.
         var connectEndpoint = service.endpoint
-        if isAppleReceiver {
+        if isAppleReceiver && (interfacePreference == .auto || interfacePreference == .p2pOnly) {
             if let p2pService = foundServices.first(where: { $0.name == service.name + " P2P" }) {
                 // Use the P2P-advertised endpoint for AWDL connection
                 connectEndpoint = p2pService.endpoint
@@ -2815,6 +2858,9 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
                     LogManager.shared.log("Sender: Apple receiver — enabling P2P discovery for \(service.name)")
                 }
             }
+        } else if isAppleReceiver {
+            configureParameters(parameters)
+            LogManager.shared.log("Sender: Apple receiver — using selected mode \(interfacePreference.rawValue) for \(service.name)")
         } else {
             // Non-Apple devices: skip P2P, go straight to infrastructure
             parameters.includePeerToPeer = false
@@ -2828,16 +2874,23 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         // Timeout: if connection is still not ready after 5s, retry without P2P
         // This handles cases where AWDL negotiation hangs
         var connectionTimedOut = false
+        let canRetryViaInfrastructure = interfacePreference == .auto
         let timeoutWork = DispatchWorkItem { [weak self] in
             guard let self = self else { return }
             // Only retry if still not connected (no pipeline created yet)
             if self.pipelines[connectionId] == nil && !connectionTimedOut {
                 connectionTimedOut = true
                 self.connectingServiceNames.remove(service.name)
-                LogManager.shared.log("Sender: Connection to \(service.name) timed out — retrying via infrastructure")
                 connection.cancel()
 
+                guard canRetryViaInfrastructure else {
+                    self.status = "Connection timed out"
+                    LogManager.shared.log("Sender: Connection to \(service.name) timed out in \(self.interfacePreference.rawValue)")
+                    return
+                }
+
                 // Retry with plain TCP (no interface restrictions)
+                LogManager.shared.log("Sender: Connection to \(service.name) timed out — retrying via infrastructure")
                 let tcpOptions = NWProtocolTCP.Options()
                 tcpOptions.enableKeepalive = true
                 tcpOptions.noDelay = true
@@ -3519,6 +3572,9 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
             connectedDisplays[idx].audioEnabled = enabled
             let name = connectedDisplays[idx].name
             LogManager.shared.log("Sender: Audio \(enabled ? "enabled" : "disabled") for \(name)")
+            if pipelines[connectionId] != nil {
+                updateStreamResolution()
+            }
         }
     }
 
@@ -3666,26 +3722,29 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         LogManager.shared.log("Sender: Starting pipeline for \(serviceName)...")
 
         var targetDisplayID: CGDirectDisplayID? = nil
-        let receiverDisplaySize = preferredReceiverDisplaySize(for: connectionId)
+        let receiverDisplaySize = selectedResolution == VirtualDisplayManager.receiverBestFitResolution
+            ? preferredReceiverDisplaySize(for: connectionId)
+            : nil
 
         // Create virtual display if enabled
         if useVirtualDisplay {
             LogManager.shared.log("Sender: Creating virtual display for \(serviceName)...")
             let displayManager = VirtualDisplayManager()
 
-            // Use receiver-reported aspect ratio, capped to a comfortable default long edge.
+            // Use receiver-reported aspect ratio, but expose a smaller HiDPI logical mode.
             let res: (width: Int, height: Int, ppi: Int)
             if let receiverDisplaySize {
-                res = (width: receiverDisplaySize.width, height: receiverDisplaySize.height, ppi: selectedResolution.ppi)
-                LogManager.shared.log("Sender: Using scaled receiver resolution \(receiverDisplaySize.width)x\(receiverDisplaySize.height) from reported \(receiverDisplaySize.reportedWidth)x\(receiverDisplaySize.reportedHeight) for \(serviceName)")
+                res = (width: receiverDisplaySize.backingWidth, height: receiverDisplaySize.backingHeight, ppi: selectedResolution.ppi)
+                LogManager.shared.log("Sender: Using HiDPI receiver display \(receiverDisplaySize.logicalWidth)x\(receiverDisplaySize.logicalHeight) logical / \(receiverDisplaySize.backingWidth)x\(receiverDisplaySize.backingHeight) backing from reported \(receiverDisplaySize.reportedWidth)x\(receiverDisplaySize.reportedHeight) for \(serviceName)")
             } else {
                 res = (width: selectedResolution.width, height: selectedResolution.height, ppi: selectedResolution.ppi)
             }
+            let shouldUseHiDPI = receiverDisplaySize != nil || selectedResolution.hiDPI || isRetina
             let resolution = VirtualDisplayManager.Resolution(
                 width: res.width,
                 height: res.height,
-                ppi: isRetina ? min(220, res.ppi * 2) : res.ppi,
-                hiDPI: isRetina,
+                ppi: shouldUseHiDPI ? min(220, res.ppi * 2) : res.ppi,
+                hiDPI: shouldUseHiDPI,
                 name: "BetterCast Display (\(serviceName))"
             )
 
@@ -3731,10 +3790,10 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         let captureWidth: Int
         let captureHeight: Int
         if let receiverDisplaySize {
-            captureWidth = receiverDisplaySize.width
-            captureHeight = receiverDisplaySize.height
+            captureWidth = receiverDisplaySize.captureWidth
+            captureHeight = receiverDisplaySize.captureHeight
         } else {
-            let scale = isRetina ? 2 : 1
+            let scale = isRetina && !selectedResolution.hiDPI ? 2 : 1
             captureWidth = selectedResolution.width * scale
             captureHeight = selectedResolution.height * scale
         }
@@ -3775,7 +3834,7 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
             LogManager.shared.log("Sender: Infrastructure mode — \(fps) FPS / \(bitrate / 1_000_000) Mbps / KF every 2s for \(serviceName)")
         }
 
-        LogManager.shared.log("Sender: Pipeline \(serviceName): \(captureWidth)x\(captureHeight)\(receiverDisplaySize != nil ? " (device-scaled)" : "") @ \(selectedQuality.name) [\(fps) FPS, P2P: \(isP2P)]")
+        LogManager.shared.log("Sender: Pipeline \(serviceName): \(captureWidth)x\(captureHeight)\(receiverDisplaySize != nil ? " (native capture)" : "") @ \(selectedQuality.name) [\(fps) FPS, P2P: \(isP2P)]")
 
         // P2P: tight 0.1s rate limit window prevents AWDL buffer bloat
         // Infrastructure: loose 1.0s window lets the encoder handle burst scenes naturally
@@ -3811,7 +3870,7 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         }
     }
 
-    private func preferredReceiverDisplaySize(for connectionId: UUID) -> (reportedWidth: Int, reportedHeight: Int, width: Int, height: Int)? {
+    private func preferredReceiverDisplaySize(for connectionId: UUID) -> ReceiverDisplaySize? {
         guard let reportedWidth = pipelines[connectionId]?.reportedScreenWidth,
               let reportedHeight = pipelines[connectionId]?.reportedScreenHeight,
               reportedWidth > 0,
@@ -3819,13 +3878,26 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
             return nil
         }
 
-        let scaled = scaledReceiverDisplaySize(width: reportedWidth, height: reportedHeight)
-        return (reportedWidth, reportedHeight, scaled.width, scaled.height)
+        let logical = scaledReceiverDisplaySize(
+            width: reportedWidth,
+            height: reportedHeight,
+            targetLongEdge: BCConstants.defaultReceiverVirtualDisplayLogicalLongEdge
+        )
+        let backingScale = BCConstants.defaultReceiverVirtualDisplayScale
+        return ReceiverDisplaySize(
+            reportedWidth: reportedWidth,
+            reportedHeight: reportedHeight,
+            logicalWidth: logical.width,
+            logicalHeight: logical.height,
+            backingWidth: logical.width * backingScale,
+            backingHeight: logical.height * backingScale,
+            captureWidth: roundedEvenPixelCount(Double(reportedWidth)),
+            captureHeight: roundedEvenPixelCount(Double(reportedHeight))
+        )
     }
 
-    private func scaledReceiverDisplaySize(width: Int, height: Int) -> (width: Int, height: Int) {
+    private func scaledReceiverDisplaySize(width: Int, height: Int, targetLongEdge: Int) -> (width: Int, height: Int) {
         let longEdge = max(width, height)
-        let targetLongEdge = BCConstants.defaultReceiverVirtualDisplayLongEdge
         guard longEdge > targetLongEdge else {
             return (width, height)
         }

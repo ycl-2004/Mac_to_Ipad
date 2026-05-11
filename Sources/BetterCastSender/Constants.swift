@@ -39,9 +39,12 @@ enum BCConstants {
     static let adbPath = "/usr/local/bin/adb"
 
     // MARK: - Display Defaults
-    /// Default long edge for receiver-matched virtual displays.
-    /// A 2360 x 1640 iPad scales to 1600 x 1112, matching macOS's comfortable scaled mode.
-    static let defaultReceiverVirtualDisplayLongEdge = 1600
+    /// Default logical long edge for receiver-matched virtual displays.
+    /// A 2360 x 1640 iPad becomes a 1344 x 934 HiDPI display, with native-pixel capture.
+    static let defaultReceiverVirtualDisplayLogicalLongEdge = 1344
+
+    /// HiDPI scale for receiver-matched virtual displays.
+    static let defaultReceiverVirtualDisplayScale = 2
 
     /// Default Android screen size when device hasn't reported its dimensions yet.
     /// Matches a typical phone resolution in landscape.

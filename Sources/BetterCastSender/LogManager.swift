@@ -64,17 +64,11 @@ struct Changelog {
     }
 
     static let entries: [Entry] = [
-        Entry(version: "Private v1", date: "2026-05-11", highlights: [
-            "Mac sender-only build for a paired iPad receiver",
-            "Private Bonjour service with Apple peer-to-peer networking first",
-            "Local Keychain pairing code support",
-            "No automatic update check or public issue-report upload flow",
-        ]),
-        Entry(version: "Upstream base", date: "2026-03-30", highlights: [
-            "Virtual display streaming pipeline",
-            "Display arrangement overview with live thumbnails",
-            "TCP heartbeat and flow-control foundation",
-            "Optional AAC audio streaming pipeline",
+        Entry(version: UpdateChecker.currentVersion, date: "2026-05-11", highlights: [
+            "iPad default display mode is Best Fit: 1344 x 934 HiDPI with native capture",
+            "iPad receiver opens in Fit Screen mode and requires full screen",
+            "Mac and iPad app icons are aligned for the private build",
+            "Cleaner settings help tips with adjustable network mode, bitrate, Retina, and audio controls",
         ]),
     ]
 }
