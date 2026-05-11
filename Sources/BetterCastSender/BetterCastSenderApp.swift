@@ -3666,18 +3666,18 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         LogManager.shared.log("Sender: Starting pipeline for \(serviceName)...")
 
         var targetDisplayID: CGDirectDisplayID? = nil
+        let receiverDisplaySize = preferredReceiverDisplaySize(for: connectionId)
 
         // Create virtual display if enabled
         if useVirtualDisplay {
             LogManager.shared.log("Sender: Creating virtual display for \(serviceName)...")
             let displayManager = VirtualDisplayManager()
 
-            // Use receiver-reported screen dimensions if available (matches device aspect ratio)
+            // Use receiver-reported aspect ratio, capped to a comfortable default long edge.
             let res: (width: Int, height: Int, ppi: Int)
-            if let rw = pipelines[connectionId]?.reportedScreenWidth,
-               let rh = pipelines[connectionId]?.reportedScreenHeight, rw > 0 && rh > 0 {
-                res = (width: rw, height: rh, ppi: selectedResolution.ppi)
-                LogManager.shared.log("Sender: Using device-reported resolution \(rw)x\(rh) for \(serviceName)")
+            if let receiverDisplaySize {
+                res = (width: receiverDisplaySize.width, height: receiverDisplaySize.height, ppi: selectedResolution.ppi)
+                LogManager.shared.log("Sender: Using scaled receiver resolution \(receiverDisplaySize.width)x\(receiverDisplaySize.height) from reported \(receiverDisplaySize.reportedWidth)x\(receiverDisplaySize.reportedHeight) for \(serviceName)")
             } else {
                 res = (width: selectedResolution.width, height: selectedResolution.height, ppi: selectedResolution.ppi)
             }
@@ -3727,13 +3727,12 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         }
 
         // Calculate Physical Capture Resolution
-        // Use reported screen dimensions if available (already in pixels)
+        // Match the virtual display dimensions so macOS default scaling stays stable.
         let captureWidth: Int
         let captureHeight: Int
-        if let rw = pipelines[connectionId]?.reportedScreenWidth,
-           let rh = pipelines[connectionId]?.reportedScreenHeight, rw > 0 && rh > 0 {
-            captureWidth = rw
-            captureHeight = rh
+        if let receiverDisplaySize {
+            captureWidth = receiverDisplaySize.width
+            captureHeight = receiverDisplaySize.height
         } else {
             let scale = isRetina ? 2 : 1
             captureWidth = selectedResolution.width * scale
@@ -3776,8 +3775,7 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
             LogManager.shared.log("Sender: Infrastructure mode — \(fps) FPS / \(bitrate / 1_000_000) Mbps / KF every 2s for \(serviceName)")
         }
 
-        let hasReportedDims = pipelines[connectionId]?.reportedScreenWidth != nil
-        LogManager.shared.log("Sender: Pipeline \(serviceName): \(captureWidth)x\(captureHeight)\(hasReportedDims ? " (device)" : "") @ \(selectedQuality.name) [\(fps) FPS, P2P: \(isP2P)]")
+        LogManager.shared.log("Sender: Pipeline \(serviceName): \(captureWidth)x\(captureHeight)\(receiverDisplaySize != nil ? " (device-scaled)" : "") @ \(selectedQuality.name) [\(fps) FPS, P2P: \(isP2P)]")
 
         // P2P: tight 0.1s rate limit window prevents AWDL buffer bloat
         // Infrastructure: loose 1.0s window lets the encoder handle burst scenes naturally
@@ -3811,6 +3809,36 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         Task {
             await recorder.startCapture()
         }
+    }
+
+    private func preferredReceiverDisplaySize(for connectionId: UUID) -> (reportedWidth: Int, reportedHeight: Int, width: Int, height: Int)? {
+        guard let reportedWidth = pipelines[connectionId]?.reportedScreenWidth,
+              let reportedHeight = pipelines[connectionId]?.reportedScreenHeight,
+              reportedWidth > 0,
+              reportedHeight > 0 else {
+            return nil
+        }
+
+        let scaled = scaledReceiverDisplaySize(width: reportedWidth, height: reportedHeight)
+        return (reportedWidth, reportedHeight, scaled.width, scaled.height)
+    }
+
+    private func scaledReceiverDisplaySize(width: Int, height: Int) -> (width: Int, height: Int) {
+        let longEdge = max(width, height)
+        let targetLongEdge = BCConstants.defaultReceiverVirtualDisplayLongEdge
+        guard longEdge > targetLongEdge else {
+            return (width, height)
+        }
+
+        let scale = Double(targetLongEdge) / Double(longEdge)
+        return (
+            width: roundedEvenPixelCount(Double(width) * scale),
+            height: roundedEvenPixelCount(Double(height) * scale)
+        )
+    }
+
+    private func roundedEvenPixelCount(_ value: Double) -> Int {
+        max(2, Int((value / 2).rounded()) * 2)
     }
     
     // VideoEncoderDelegate - Send to the specific connection that owns this encoder
