@@ -495,7 +495,7 @@ class NetworkListenerIOS {
     
     private func receiveUDP(on connection: NWConnection) {
         connection.receiveMessage { [weak self] content, contentContext, isComplete, error in
-            if let error = error { return }
+            if error != nil { return }
             if let content = content, !content.isEmpty {
                  self?.handleUDPPacket(content)
             }

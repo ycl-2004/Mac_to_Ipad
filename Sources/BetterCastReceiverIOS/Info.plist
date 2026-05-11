@@ -31,6 +31,8 @@
         <key>UIImageRespectsSafeAreaInsets</key>
         <true/>
     </dict>
+    <key>UIRequiresFullScreen</key>
+    <true/>
     <key>NSLocalNetworkUsageDescription</key>
     <string>BetterCast uses the local network to connect to your Mac.</string>
     <key>NSBonjourServices</key>

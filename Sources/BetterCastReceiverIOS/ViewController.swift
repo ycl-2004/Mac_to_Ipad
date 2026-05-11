@@ -208,7 +208,7 @@ class ViewController: UIViewController, NetworkListenerDelegate, InputDelegate {
         ]
 
         instructions.append(NSAttributedString(string: "1. Install BetterCast Sender\n", attributes: stepAttrs))
-        instructions.append(NSAttributedString(string: "Build and run the private Mac sender from this source tree to extend or mirror your display to this device.\n\n", attributes: bodyAttrs))
+        instructions.append(NSAttributedString(string: "Build and run the private Mac sender from this source tree to extend your display to this device.\n\n", attributes: bodyAttrs))
 
         instructions.append(NSAttributedString(string: "2. Connect to the same network\n", attributes: stepAttrs))
         instructions.append(NSAttributedString(string: "Make sure this device and your Mac are on the same Wi-Fi network.\n\n", attributes: bodyAttrs))
@@ -527,7 +527,7 @@ class ViewController: UIViewController, NetworkListenerDelegate, InputDelegate {
 
         // Display mode button
         displayModeButton = UIButton(type: .system)
-        displayModeButton.setTitle("Fill Screen", for: .normal)
+        updateDisplayModeButtonTitle()
         displayModeButton.setTitleColor(.white, for: .normal)
         displayModeButton.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.5)
         displayModeButton.layer.cornerRadius = 10
@@ -644,6 +644,10 @@ class ViewController: UIViewController, NetworkListenerDelegate, InputDelegate {
 
     @objc private func toggleDisplayMode() {
         renderer.isAspectFill.toggle()
+        updateDisplayModeButtonTitle()
+    }
+
+    private func updateDisplayModeButtonTitle() {
         displayModeButton.setTitle(renderer.isAspectFill ? "Fill Screen" : "Fit Screen", for: .normal)
     }
     

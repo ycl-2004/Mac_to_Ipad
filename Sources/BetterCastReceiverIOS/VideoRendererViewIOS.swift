@@ -54,7 +54,7 @@ class VideoRendererViewIOS: UIView, VideoRendererIOS {
     }
     
     private func setupLayer() {
-        videoLayer.videoGravity = .resizeAspectFill // Fill screen by default (like Duet Display)
+        videoLayer.videoGravity = .resizeAspect
         // Use timebase for smooth playback (standard remote desktop technique)
         var controlTimebase: CMTimebase?
         CMTimebaseCreateWithSourceClock(allocator: kCFAllocatorDefault, sourceClock: CMClockGetHostTimeClock(), timebaseOut: &controlTimebase)
@@ -135,7 +135,7 @@ class VideoRendererViewIOS: UIView, VideoRendererIOS {
     }
 
     /// Toggle between aspect-fill (full screen) and aspect-fit (letterbox)
-    var isAspectFill: Bool = true {
+    var isAspectFill: Bool = false {
         didSet {
             videoLayer.videoGravity = isAspectFill ? .resizeAspectFill : .resizeAspect
         }
@@ -256,7 +256,6 @@ class VideoRendererViewIOS: UIView, VideoRendererIOS {
             case .began:
                 inputDelegate?.didTriggerInput(InputEvent(type: .leftMouseDown, x: cursorX, y: cursorY))
             case .changed:
-                let location = gesture.location(in: self)
                 // Use delta from initial touch for relative movement
                 moveCursor(dx: 0, dy: 0) // Position already tracked
                 // For long press drag in cursor mode, we need to track movement
@@ -316,4 +315,3 @@ class VideoRendererViewIOS: UIView, VideoRendererIOS {
     }
 }
 #endif
-
