@@ -1,0 +1,494 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 60;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		BC1000010000000000000001 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC2000010000000000000001 /* main.swift */; };
+		BC1000010000000000000002 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC2000010000000000000002 /* AppDelegate.swift */; };
+		BC1000010000000000000003 /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC2000010000000000000003 /* ViewController.swift */; };
+		BC1000010000000000000004 /* NetworkListenerIOS.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC2000010000000000000004 /* NetworkListenerIOS.swift */; };
+		BC1000010000000000000005 /* VideoRendererViewIOS.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC2000010000000000000005 /* VideoRendererViewIOS.swift */; };
+		BC1000010000000000000006 /* VideoDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC2000010000000000000006 /* VideoDecoder.swift */; };
+		BC1000010000000000000007 /* AudioPlayerIOS.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC2000010000000000000007 /* AudioPlayerIOS.swift */; };
+		BC1000010000000000000008 /* InputEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC2000010000000000000008 /* InputEvent.swift */; };
+		BC1000010000000000000009 /* Constants.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC2000010000000000000009 /* Constants.swift */; };
+		BC100001000000000000000A /* LogManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC200001000000000000000A /* LogManager.swift */; };
+		BC100001000000000000000B /* MinimalViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC200001000000000000000B /* MinimalViewController.swift */; };
+		BC100001000000000000000C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BC200001000000000000000C /* Assets.xcassets */; };
+		BC1000020000000000000001 /* PrivateBetterCastConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC2000020000000000000001 /* PrivateBetterCastConstants.swift */; };
+		BC1000020000000000000002 /* PairingAuthenticator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC2000020000000000000002 /* PairingAuthenticator.swift */; };
+		BC1000020000000000000003 /* PairingSecretStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC2000020000000000000003 /* PairingSecretStore.swift */; };
+		BC1000030000000000000001 /* BetterCastShared.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BC2000030000000000000001 /* BetterCastShared.framework */; };
+		BC1000030000000000000002 /* BetterCastShared.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = BC2000030000000000000001 /* BetterCastShared.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		BC1000040000000000000001 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BC2000040000000000000001 /* UIKit.framework */; };
+		BC1000040000000000000002 /* Network.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BC2000040000000000000002 /* Network.framework */; };
+		BC1000040000000000000003 /* VideoToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BC2000040000000000000003 /* VideoToolbox.framework */; };
+		BC1000040000000000000004 /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BC2000040000000000000004 /* CoreMedia.framework */; };
+		BC1000040000000000000005 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BC2000040000000000000005 /* AVFoundation.framework */; };
+		BC1000040000000000000006 /* CryptoKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BC2000040000000000000006 /* CryptoKit.framework */; };
+		BC1000040000000000000007 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BC2000040000000000000007 /* Security.framework */; };
+		BC1000040000000000000008 /* CryptoKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BC2000040000000000000006 /* CryptoKit.framework */; };
+		BC1000040000000000000009 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BC2000040000000000000007 /* Security.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		BC3000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = BC0000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = BC4000000000000000000002;
+			remoteInfo = BetterCastShared;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		BC5000000000000000000001 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				BC1000030000000000000002 /* BetterCastShared.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		BC2000000000000000000001 /* BetterCastReceiverIOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BetterCastReceiverIOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		BC2000010000000000000001 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		BC2000010000000000000002 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		BC2000010000000000000003 /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
+		BC2000010000000000000004 /* NetworkListenerIOS.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkListenerIOS.swift; sourceTree = "<group>"; };
+		BC2000010000000000000005 /* VideoRendererViewIOS.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoRendererViewIOS.swift; sourceTree = "<group>"; };
+		BC2000010000000000000006 /* VideoDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoDecoder.swift; sourceTree = "<group>"; };
+		BC2000010000000000000007 /* AudioPlayerIOS.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerIOS.swift; sourceTree = "<group>"; };
+		BC2000010000000000000008 /* InputEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputEvent.swift; sourceTree = "<group>"; };
+		BC2000010000000000000009 /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
+		BC200001000000000000000A /* LogManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogManager.swift; sourceTree = "<group>"; };
+		BC200001000000000000000B /* MinimalViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MinimalViewController.swift; sourceTree = "<group>"; };
+		BC200001000000000000000C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		BC200001000000000000000D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		BC2000020000000000000001 /* PrivateBetterCastConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivateBetterCastConstants.swift; sourceTree = "<group>"; };
+		BC2000020000000000000002 /* PairingAuthenticator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingAuthenticator.swift; sourceTree = "<group>"; };
+		BC2000020000000000000003 /* PairingSecretStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingSecretStore.swift; sourceTree = "<group>"; };
+		BC2000030000000000000001 /* BetterCastShared.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = BetterCastShared.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		BC2000040000000000000001 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
+		BC2000040000000000000002 /* Network.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Network.framework; path = System/Library/Frameworks/Network.framework; sourceTree = SDKROOT; };
+		BC2000040000000000000003 /* VideoToolbox.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = VideoToolbox.framework; path = System/Library/Frameworks/VideoToolbox.framework; sourceTree = SDKROOT; };
+		BC2000040000000000000004 /* CoreMedia.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMedia.framework; path = System/Library/Frameworks/CoreMedia.framework; sourceTree = SDKROOT; };
+		BC2000040000000000000005 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
+		BC2000040000000000000006 /* CryptoKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CryptoKit.framework; path = System/Library/Frameworks/CryptoKit.framework; sourceTree = SDKROOT; };
+		BC2000040000000000000007 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		BC6000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BC1000030000000000000001 /* BetterCastShared.framework in Frameworks */,
+				BC1000040000000000000001 /* UIKit.framework in Frameworks */,
+				BC1000040000000000000002 /* Network.framework in Frameworks */,
+				BC1000040000000000000003 /* VideoToolbox.framework in Frameworks */,
+				BC1000040000000000000004 /* CoreMedia.framework in Frameworks */,
+				BC1000040000000000000005 /* AVFoundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BC6000000000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BC1000040000000000000008 /* CryptoKit.framework in Frameworks */,
+				BC1000040000000000000009 /* Security.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		BC7000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				BC7000000000000000000002 /* Sources */,
+				BC7000000000000000000005 /* Frameworks */,
+				BC7000000000000000000006 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		BC7000000000000000000002 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				BC7000000000000000000003 /* BetterCastReceiverIOS */,
+				BC7000000000000000000004 /* BetterCastShared */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		BC7000000000000000000003 /* BetterCastReceiverIOS */ = {
+			isa = PBXGroup;
+			children = (
+				BC200001000000000000000D /* Info.plist */,
+				BC200001000000000000000C /* Assets.xcassets */,
+				BC2000010000000000000001 /* main.swift */,
+				BC2000010000000000000002 /* AppDelegate.swift */,
+				BC2000010000000000000003 /* ViewController.swift */,
+				BC2000010000000000000004 /* NetworkListenerIOS.swift */,
+				BC2000010000000000000005 /* VideoRendererViewIOS.swift */,
+				BC2000010000000000000006 /* VideoDecoder.swift */,
+				BC2000010000000000000007 /* AudioPlayerIOS.swift */,
+				BC2000010000000000000008 /* InputEvent.swift */,
+				BC2000010000000000000009 /* Constants.swift */,
+				BC200001000000000000000A /* LogManager.swift */,
+				BC200001000000000000000B /* MinimalViewController.swift */,
+			);
+			path = BetterCastReceiverIOS;
+			sourceTree = "<group>";
+		};
+		BC7000000000000000000004 /* BetterCastShared */ = {
+			isa = PBXGroup;
+			children = (
+				BC2000020000000000000001 /* PrivateBetterCastConstants.swift */,
+				BC2000020000000000000002 /* PairingAuthenticator.swift */,
+				BC2000020000000000000003 /* PairingSecretStore.swift */,
+			);
+			path = BetterCastShared;
+			sourceTree = "<group>";
+		};
+		BC7000000000000000000005 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				BC2000040000000000000001 /* UIKit.framework */,
+				BC2000040000000000000002 /* Network.framework */,
+				BC2000040000000000000003 /* VideoToolbox.framework */,
+				BC2000040000000000000004 /* CoreMedia.framework */,
+				BC2000040000000000000005 /* AVFoundation.framework */,
+				BC2000040000000000000006 /* CryptoKit.framework */,
+				BC2000040000000000000007 /* Security.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		BC7000000000000000000006 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				BC2000000000000000000001 /* BetterCastReceiverIOS.app */,
+				BC2000030000000000000001 /* BetterCastShared.framework */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		BC4000000000000000000001 /* BetterCastReceiverIOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BC9000000000000000000002 /* Build configuration list for PBXNativeTarget "BetterCastReceiverIOS" */;
+			buildPhases = (
+				BC8000000000000000000001 /* Sources */,
+				BC6000000000000000000001 /* Frameworks */,
+				BC8000000000000000000002 /* Resources */,
+				BC5000000000000000000001 /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				BC3000000000000000000002 /* PBXTargetDependency */,
+			);
+			name = BetterCastReceiverIOS;
+			productName = BetterCastReceiverIOS;
+			productReference = BC2000000000000000000001 /* BetterCastReceiverIOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+		BC4000000000000000000002 /* BetterCastShared */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BC9000000000000000000003 /* Build configuration list for PBXNativeTarget "BetterCastShared" */;
+			buildPhases = (
+				BC8000000000000000000003 /* Sources */,
+				BC6000000000000000000002 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = BetterCastShared;
+			productName = BetterCastShared;
+			productReference = BC2000030000000000000001 /* BetterCastShared.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		BC0000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1640;
+				LastUpgradeCheck = 1640;
+				TargetAttributes = {
+					BC4000000000000000000001 = {
+						CreatedOnToolsVersion = 16.4;
+						DevelopmentTeam = BQYHJCCRMP;
+						ProvisioningStyle = Automatic;
+					};
+					BC4000000000000000000002 = {
+						CreatedOnToolsVersion = 16.4;
+						DevelopmentTeam = BQYHJCCRMP;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = BC9000000000000000000001 /* Build configuration list for PBXProject "BetterCastIOS" */;
+			compatibilityVersion = "Xcode 15.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = BC7000000000000000000001;
+			productRefGroup = BC7000000000000000000006 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				BC4000000000000000000001 /* BetterCastReceiverIOS */,
+				BC4000000000000000000002 /* BetterCastShared */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		BC8000000000000000000002 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BC100001000000000000000C /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		BC8000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BC1000010000000000000001 /* main.swift in Sources */,
+				BC1000010000000000000002 /* AppDelegate.swift in Sources */,
+				BC1000010000000000000003 /* ViewController.swift in Sources */,
+				BC1000010000000000000004 /* NetworkListenerIOS.swift in Sources */,
+				BC1000010000000000000005 /* VideoRendererViewIOS.swift in Sources */,
+				BC1000010000000000000006 /* VideoDecoder.swift in Sources */,
+				BC1000010000000000000007 /* AudioPlayerIOS.swift in Sources */,
+				BC1000010000000000000008 /* InputEvent.swift in Sources */,
+				BC1000010000000000000009 /* Constants.swift in Sources */,
+				BC100001000000000000000A /* LogManager.swift in Sources */,
+				BC100001000000000000000B /* MinimalViewController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BC8000000000000000000003 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BC1000020000000000000001 /* PrivateBetterCastConstants.swift in Sources */,
+				BC1000020000000000000002 /* PairingAuthenticator.swift in Sources */,
+				BC1000020000000000000003 /* PairingSecretStore.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		BC3000000000000000000002 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = BC4000000000000000000002 /* BetterCastShared */;
+			targetProxy = BC3000000000000000000001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		BC9100000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		BC9100000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_NO_COMMON_BLOCKS = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		BC9100000000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 11;
+				DEVELOPMENT_TEAM = BQYHJCCRMP;
+				ENABLE_DEBUG_DYLIB = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Sources/BetterCastReceiverIOS/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.3;
+				PRODUCT_BUNDLE_IDENTIFIER = com.yichen.privatebettercast.receiver.ios;
+				PRODUCT_NAME = BetterCastReceiverIOS;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		BC9100000000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 11;
+				DEVELOPMENT_TEAM = BQYHJCCRMP;
+				ENABLE_DEBUG_DYLIB = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Sources/BetterCastReceiverIOS/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.3;
+				PRODUCT_BUNDLE_IDENTIFIER = com.yichen.privatebettercast.receiver.ios;
+				PRODUCT_NAME = BetterCastReceiverIOS;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		BC9100000000000000000005 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEFINES_MODULE = YES;
+				DEVELOPMENT_TEAM = BQYHJCCRMP;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INSTALL_PATH = "@rpath";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACH_O_TYPE = mh_dylib;
+				PRODUCT_BUNDLE_IDENTIFIER = com.yichen.privatebettercast.shared;
+				PRODUCT_NAME = BetterCastShared;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		BC9100000000000000000006 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEFINES_MODULE = YES;
+				DEVELOPMENT_TEAM = BQYHJCCRMP;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INSTALL_PATH = "@rpath";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACH_O_TYPE = mh_dylib;
+				PRODUCT_BUNDLE_IDENTIFIER = com.yichen.privatebettercast.shared;
+				PRODUCT_NAME = BetterCastShared;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		BC9000000000000000000001 /* Build configuration list for PBXProject "BetterCastIOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BC9100000000000000000001 /* Debug */,
+				BC9100000000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		BC9000000000000000000002 /* Build configuration list for PBXNativeTarget "BetterCastReceiverIOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BC9100000000000000000003 /* Debug */,
+				BC9100000000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		BC9000000000000000000003 /* Build configuration list for PBXNativeTarget "BetterCastShared" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BC9100000000000000000005 /* Debug */,
+				BC9100000000000000000006 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = BC0000000000000000000001 /* Project object */;
+}

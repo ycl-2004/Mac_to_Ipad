@@ -1,0 +1,176 @@
+name: Build Linux Receiver
+
+on:
+  push:
+    paths:
+      - 'Sources/BetterCastReceiverDesktop/**'
+      - '.github/workflows/build-linux-receiver.yml'
+  workflow_dispatch:  # Manual trigger from GitHub UI
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  QT_VERSION: '6.7.0'
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            pkg-config \
+            libgl1-mesa-dev \
+            libglu1-mesa-dev \
+            libegl1-mesa-dev \
+            libxkbcommon-dev \
+            libxkbcommon-x11-0 \
+            libxcb-xinerama0 \
+            libxcb-cursor0 \
+            libxcb-icccm4 \
+            libxcb-image0 \
+            libxcb-keysyms1 \
+            libxcb-randr0 \
+            libxcb-render-util0 \
+            libxcb-shape0 \
+            libavcodec-dev \
+            libavutil-dev \
+            libswscale-dev \
+            libavahi-compat-libdnssd-dev \
+            libpulse-dev \
+            libasound2-dev \
+            libfuse2
+
+      - name: Install Qt 6 via aqtinstall
+        run: |
+          pip install aqtinstall
+          python3 -m aqt install-qt linux desktop ${{ env.QT_VERSION }} linux_gcc_64 \
+            --modules qtmultimedia \
+            --outputdir $HOME/Qt
+          echo "Qt6_DIR=$HOME/Qt/${{ env.QT_VERSION }}/gcc_64" >> $GITHUB_ENV
+          echo "$HOME/Qt/${{ env.QT_VERSION }}/gcc_64/bin" >> $GITHUB_PATH
+          echo "LD_LIBRARY_PATH=$HOME/Qt/${{ env.QT_VERSION }}/gcc_64/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+
+      - name: Configure CMake
+        run: |
+          cd Sources/BetterCastReceiverDesktop
+          mkdir build
+          cd build
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$Qt6_DIR" \
+            -DCMAKE_INSTALL_PREFIX=/usr
+
+      - name: Build
+        run: |
+          cd Sources/BetterCastReceiverDesktop/build
+          cmake --build . --config Release -- -j$(nproc)
+
+      - name: Install to AppDir
+        run: |
+          cd Sources/BetterCastReceiverDesktop/build
+          DESTDIR=$GITHUB_WORKSPACE/AppDir cmake --install . --config Release
+
+      - name: Prepare AppImage structure
+        run: |
+          APPDIR=$GITHUB_WORKSPACE/AppDir
+
+          # Create .desktop file (must NOT have leading whitespace)
+          cat > "$APPDIR/usr/share/applications/BetterCastReceiver.desktop" << 'EOF'
+          [Desktop Entry]
+          Name=BetterCast Receiver
+          Comment=Receive screen cast from BetterCast Sender
+          Exec=BetterCastReceiver
+          Icon=bettercast-receiver
+          Type=Application
+          Categories=Utility;Network;
+          EOF
+          # Strip leading whitespace from heredoc (desktop files are whitespace-sensitive)
+          sed -i 's/^          //' "$APPDIR/usr/share/applications/BetterCastReceiver.desktop"
+
+          # Symlink .desktop and icon to AppDir root (required by AppImage)
+          cp "$APPDIR/usr/share/applications/BetterCastReceiver.desktop" "$APPDIR/"
+          mkdir -p "$APPDIR/usr/share/icons/hicolor/256x256/apps"
+          cp Sources/BetterCastReceiverDesktop/icon_256x256.png \
+            "$APPDIR/usr/share/icons/hicolor/256x256/apps/bettercast-receiver.png"
+          cp "$APPDIR/usr/share/icons/hicolor/256x256/apps/bettercast-receiver.png" "$APPDIR/"
+
+          # Create AppRun script
+          cat > "$APPDIR/AppRun" << 'SCRIPT'
+          #!/bin/bash
+          SELF=$(readlink -f "$0")
+          HERE=${SELF%/*}
+          export PATH="$HERE/usr/bin:$PATH"
+          export LD_LIBRARY_PATH="$HERE/usr/lib:$HERE/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
+          export QT_PLUGIN_PATH="$HERE/usr/plugins"
+          export QT_QPA_PLATFORM_PLUGIN_PATH="$HERE/usr/plugins/platforms"
+          exec "$HERE/usr/bin/BetterCastReceiver" "$@"
+          SCRIPT
+          chmod +x "$APPDIR/AppRun"
+
+      - name: Download ADB platform-tools
+        run: |
+          wget -q "https://dl.google.com/android/repository/platform-tools-latest-linux.zip" \
+            -O platform-tools.zip
+          unzip -q platform-tools.zip
+          if [ -f "platform-tools/adb" ]; then
+            echo "ADB downloaded successfully"
+          else
+            echo "WARNING: adb not found in download"
+          fi
+
+      - name: Bundle ADB into AppDir
+        run: |
+          APPDIR=$GITHUB_WORKSPACE/AppDir
+          mkdir -p "$APPDIR/usr/bin"
+          if [ -f "platform-tools/adb" ]; then
+            cp platform-tools/adb "$APPDIR/usr/bin/"
+            chmod +x "$APPDIR/usr/bin/adb"
+            echo "ADB bundled into AppDir"
+          fi
+
+      - name: Bundle Qt libraries into AppDir
+        run: |
+          APPDIR=$GITHUB_WORKSPACE/AppDir
+          mkdir -p "$APPDIR/usr/lib"
+          mkdir -p "$APPDIR/usr/plugins/platforms"
+          mkdir -p "$APPDIR/usr/plugins/xcbglintegrations"
+
+          # Qt shared libraries
+          for lib in Core Gui Widgets Network OpenGL OpenGLWidgets Multimedia DBus XcbQpa; do
+            cp "$Qt6_DIR/lib/libQt6${lib}.so.6" "$APPDIR/usr/lib/" 2>/dev/null || true
+          done
+
+          # ICU libraries (required by Qt)
+          cp "$Qt6_DIR/lib/libicui18n.so."* "$APPDIR/usr/lib/" 2>/dev/null || true
+          cp "$Qt6_DIR/lib/libicuuc.so."* "$APPDIR/usr/lib/" 2>/dev/null || true
+          cp "$Qt6_DIR/lib/libicudata.so."* "$APPDIR/usr/lib/" 2>/dev/null || true
+
+          # Platform plugins
+          cp "$Qt6_DIR/plugins/platforms/libqxcb.so" "$APPDIR/usr/plugins/platforms/" 2>/dev/null || true
+          cp "$Qt6_DIR/plugins/xcbglintegrations/"*.so "$APPDIR/usr/plugins/xcbglintegrations/" 2>/dev/null || true
+
+      - name: Download linuxdeploy and build AppImage
+        run: |
+          # Download linuxdeploy AppImage tool
+          wget -q "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage"
+          chmod +x linuxdeploy-x86_64.AppImage
+
+          # Build the AppImage
+          export LDAI_OUTPUT="BetterCastReceiver-x86_64.AppImage"
+          ./linuxdeploy-x86_64.AppImage \
+            --appdir "$GITHUB_WORKSPACE/AppDir" \
+            --output appimage
+
+      - name: Upload AppImage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BetterCastReceiver-Linux-x64
+          path: BetterCastReceiver-x86_64.AppImage
+          retention-days: 30

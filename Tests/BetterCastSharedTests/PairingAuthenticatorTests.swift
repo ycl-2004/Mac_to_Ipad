@@ -1,0 +1,134 @@
+import XCTest
+@testable import BetterCastShared
+
+final class PairingAuthenticatorTests: XCTestCase {
+    func testReceiverProofAuthenticatesWithSameSecretAndNonces() {
+        let secret = PairingAuthenticator.normalizedSecret(from: "123-456")
+        let senderNonce = Data("sender".utf8)
+        let receiverNonce = Data("receiver".utf8)
+
+        let proof = PairingAuthenticator.receiverProof(
+            secret: secret,
+            senderNonce: senderNonce,
+            receiverNonce: receiverNonce
+        )
+
+        XCTAssertTrue(PairingAuthenticator.verifyReceiverProof(
+            proof,
+            secret: secret,
+            senderNonce: senderNonce,
+            receiverNonce: receiverNonce
+        ))
+    }
+
+    func testReceiverProofFailsWithDifferentSecret() {
+        let senderNonce = Data("sender".utf8)
+        let receiverNonce = Data("receiver".utf8)
+        let proof = PairingAuthenticator.receiverProof(
+            secret: PairingAuthenticator.normalizedSecret(from: "123456"),
+            senderNonce: senderNonce,
+            receiverNonce: receiverNonce
+        )
+
+        XCTAssertFalse(PairingAuthenticator.verifyReceiverProof(
+            proof,
+            secret: PairingAuthenticator.normalizedSecret(from: "654321"),
+            senderNonce: senderNonce,
+            receiverNonce: receiverNonce
+        ))
+    }
+
+    func testTamperedReceiverProofFails() {
+        let secret = PairingAuthenticator.normalizedSecret(from: "123456")
+        let senderNonce = Data("sender".utf8)
+        let receiverNonce = Data("receiver".utf8)
+        var proof = PairingAuthenticator.receiverProof(
+            secret: secret,
+            senderNonce: senderNonce,
+            receiverNonce: receiverNonce
+        )
+        proof[0] ^= 0xff
+
+        XCTAssertFalse(PairingAuthenticator.verifyReceiverProof(
+            proof,
+            secret: secret,
+            senderNonce: senderNonce,
+            receiverNonce: receiverNonce
+        ))
+    }
+
+    func testSessionKeyIsStableForSameInputsAndChangesForDifferentNonces() {
+        let secret = PairingAuthenticator.normalizedSecret(from: "123456")
+        let senderNonce = Data("sender".utf8)
+        let receiverNonce = Data("receiver".utf8)
+
+        let keyA = PairingAuthenticator.deriveSessionKey(
+            secret: secret,
+            senderNonce: senderNonce,
+            receiverNonce: receiverNonce
+        )
+        let keyB = PairingAuthenticator.deriveSessionKey(
+            secret: secret,
+            senderNonce: senderNonce,
+            receiverNonce: receiverNonce
+        )
+        let keyC = PairingAuthenticator.deriveSessionKey(
+            secret: secret,
+            senderNonce: Data("sender-2".utf8),
+            receiverNonce: receiverNonce
+        )
+
+        XCTAssertEqual(keyA, keyB)
+        XCTAssertNotEqual(keyA, keyC)
+    }
+
+    func testAuthenticatedEnvelopeVerifiesWithCorrectSessionKey() throws {
+        let sessionKey = Data("session-key".utf8)
+        let payload = Data("payload".utf8)
+        let envelope = AuthenticatedEnvelope.seal(sequence: 1, payload: payload, sessionKey: sessionKey)
+
+        XCTAssertEqual(try envelope.verifiedPayload(sessionKey: sessionKey), payload)
+    }
+
+    func testAuthenticatedEnvelopeFailsWithWrongKey() {
+        let envelope = AuthenticatedEnvelope.seal(
+            sequence: 1,
+            payload: Data("payload".utf8),
+            sessionKey: Data("session-key".utf8)
+        )
+
+        XCTAssertThrowsError(try envelope.verifiedPayload(sessionKey: Data("wrong-key".utf8)))
+    }
+
+    func testAuthenticatedEnvelopeFailsAfterPayloadTampering() {
+        let sessionKey = Data("session-key".utf8)
+        let envelope = AuthenticatedEnvelope.seal(
+            sequence: 1,
+            payload: Data("payload".utf8),
+            sessionKey: sessionKey
+        )
+        let tampered = AuthenticatedEnvelope(
+            sequence: envelope.sequence,
+            payload: Data("tampered".utf8),
+            mac: envelope.mac
+        )
+
+        XCTAssertThrowsError(try tampered.verifiedPayload(sessionKey: sessionKey))
+    }
+
+    func testAuthenticatedEnvelopeFailsAfterSequenceTampering() {
+        let sessionKey = Data("session-key".utf8)
+        let envelope = AuthenticatedEnvelope.seal(
+            sequence: 1,
+            payload: Data("payload".utf8),
+            sessionKey: sessionKey
+        )
+        let tampered = AuthenticatedEnvelope(
+            sequence: 2,
+            payload: envelope.payload,
+            mac: envelope.mac
+        )
+
+        XCTAssertThrowsError(try tampered.verifiedPayload(sessionKey: sessionKey))
+    }
+}
