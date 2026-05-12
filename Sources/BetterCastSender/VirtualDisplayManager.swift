@@ -36,6 +36,7 @@ class VirtualDisplayManager {
 
     static let defaultResolutions: [Resolution] = [
         receiverBestFitResolution,
+        Resolution(width: 1024, height: 768, ppi: 220, hiDPI: true, name: "1024 x 768 HiDPI (Larger Text)"),
         Resolution(width: 1280, height: 720, ppi: 92, hiDPI: false, name: "1280 x 720 (HD)"),
         Resolution(width: 1920, height: 1080, ppi: 102, hiDPI: false, name: "1920 x 1080 (FHD)"),
         Resolution(width: 1920, height: 1200, ppi: 113, hiDPI: false, name: "1920 x 1200 (16:10)"),
