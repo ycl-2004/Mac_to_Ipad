@@ -83,24 +83,9 @@ class InputHandler {
             postKeyboardEvent(keyCode: event.keyCode, keyDown: false)
         case .scrollWheel:
             switch event.keyCode {
-            case 1:
-                // Pinch-to-zoom: simulate Cmd+scroll (standard zoom gesture for most apps)
-                if let scrollEvent = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1, wheel1: Int32(event.deltaY), wheel2: 0, wheel3: 0) {
-                    scrollEvent.flags = .maskCommand
-                    scrollEvent.post(tap: .cghidEventTap)
-                }
-            case 2:
-                // Rotation: simulate as horizontal scroll with Ctrl (app-dependent)
-                if let scrollEvent = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: 0, wheel2: Int32(event.deltaX), wheel3: 0) {
-                    scrollEvent.flags = .maskControl
-                    scrollEvent.post(tap: .cghidEventTap)
-                }
-            case 3:
-                // Smart zoom: simulate Ctrl+scroll-up as a zoom toggle
-                if let scrollEvent = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1, wheel1: 5, wheel2: 0, wheel3: 0) {
-                    scrollEvent.flags = .maskCommand
-                    scrollEvent.post(tap: .cghidEventTap)
-                }
+            case 1, 2, 3:
+                // Keep iPad as a plain second display: do not inject system zoom/rotation gestures.
+                break
             default:
                 // Normal two-finger scroll
                 if let scrollEvent = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: Int32(event.deltaY), wheel2: Int32(event.deltaX), wheel3: 0) {

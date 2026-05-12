@@ -63,7 +63,9 @@ struct BetterCastSenderApp: App {
             networkClient.checkScreenRecordingPermission()
             networkClient.startBrowsing()
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                InputHandler.shared.checkAccessibility()
+                if networkClient.iPadInputEnabled {
+                    InputHandler.shared.checkAccessibility()
+                }
             }
             if !hasCompletedTour {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
@@ -1157,6 +1159,11 @@ struct DetailPanelView: View {
                     InfoTip(text: "Sends Mac system audio with the video stream. Leave it off when you only need the iPad as a silent display.")
                 }
 
+                HStack {
+                    Toggle("iPad Control", isOn: $client.iPadInputEnabled)
+                    InfoTip(text: "Allows touch, scroll, mouse, and keyboard input from the iPad. Leave this off for a plain second-screen experience.")
+                }
+
                 Button("Arrange Displays") {
                     client.openDisplaySettings()
                 }
@@ -1950,6 +1957,11 @@ struct DeviceDetailView: View {
                     ))
                     InfoTip(text: "Sends Mac system audio to this receiver together with the screen stream.")
                 }
+
+                HStack {
+                    Toggle("iPad Control", isOn: $client.iPadInputEnabled)
+                    InfoTip(text: "When off, YC Cast ignores iPad touch, scroll, and keyboard input so Mac system gestures stay with the Mac.")
+                }
             }
 
             Section("Status") {
@@ -2130,6 +2142,11 @@ struct DiscoveredDeviceView: View {
                 HStack {
                     Toggle("Audio Streaming", isOn: $client.audioStreamingEnabled)
                     InfoTip(text: "Sends Mac system audio to the receiver with the video stream.")
+                }
+
+                HStack {
+                    Toggle("iPad Control", isOn: $client.iPadInputEnabled)
+                    InfoTip(text: "When off, the receiver is display-only and cannot move Mac focus to the iPad display.")
                 }
             }
         }
@@ -2374,6 +2391,7 @@ private enum PairingTransportError: LocalizedError {
 class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegate, ScreenRecorderDelegate {
     private static let displayPlacementDefaultsKey = "displayPlacement"
     private static let hiddenDeviceKeysDefaultsKey = "hiddenDeviceKeys"
+    private static let iPadInputEnabledDefaultsKey = "iPadInputEnabled"
 
     private var browser: NWBrowser?
     private var pipelines: [UUID: ConnectionPipeline] = [:]
@@ -2390,6 +2408,14 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         didSet {
             if oldValue != audioStreamingEnabled && isConnected {
                 updateStreamResolution()
+            }
+        }
+    }
+    @Published var iPadInputEnabled: Bool = false {
+        didSet {
+            UserDefaults.standard.set(iPadInputEnabled, forKey: Self.iPadInputEnabledDefaultsKey)
+            if iPadInputEnabled {
+                InputHandler.shared.checkAccessibility()
             }
         }
     }
@@ -2593,6 +2619,7 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         displayPlacement = UserDefaults.standard.string(forKey: Self.displayPlacementDefaultsKey)
             .flatMap(VirtualDisplayManager.DisplayPlacement.init(rawValue:)) ?? .right
         hiddenDeviceKeys = Set(UserDefaults.standard.stringArray(forKey: Self.hiddenDeviceKeysDefaultsKey) ?? [])
+        iPadInputEnabled = UserDefaults.standard.bool(forKey: Self.iPadInputEnabledDefaultsKey)
         
         // We can't monitor recursively in init easily, but we can start it.
         interfaceMonitor.pathUpdateHandler = { [weak self] path in
@@ -3849,6 +3876,8 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
                                 } else if event.type == .command && event.keyCode == 777 {
                                     // Screen info from receiver: deltaX=width, deltaY=height (pixels)
                                     self.handleScreenInfo(for: connectionId, width: Int(event.deltaX), height: Int(event.deltaY))
+                                } else if !self.iPadInputEnabled {
+                                    return
                                 } else if self.isDuplicateEvent(event.eventId) == false {
                                     InputHandler.shared.handle(event: event, for: connectionId)
                                 }

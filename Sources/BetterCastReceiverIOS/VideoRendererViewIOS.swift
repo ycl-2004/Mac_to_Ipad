@@ -115,11 +115,7 @@ class VideoRendererViewIOS: UIView, VideoRendererIOS {
         scrollPan.minimumNumberOfTouches = 2
         addGestureRecognizer(scrollPan)
 
-        // 5. Pinch to Zoom
-        let pinch = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
-        addGestureRecognizer(pinch)
-
-        // 6. Double Tap (Double Click)
+        // 5. Double Tap (Double Click)
         let doubleTap = UITapGestureRecognizer(target: self, action: #selector(handleDoubleTap(_:)))
         doubleTap.numberOfTapsRequired = 2
         doubleTap.numberOfTouchesRequired = 1
@@ -127,7 +123,7 @@ class VideoRendererViewIOS: UIView, VideoRendererIOS {
         // Single tap should wait for double-tap to fail before firing
         tap.require(toFail: doubleTap)
 
-        // 7. Long Press (Click and Drag)
+        // 6. Long Press (Click and Drag)
         let longPress = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPress(_:)))
         longPress.minimumPressDuration = 0.3
         addGestureRecognizer(longPress)
@@ -289,18 +285,6 @@ class VideoRendererViewIOS: UIView, VideoRendererIOS {
         }
     }
     
-    @objc private func handlePinch(_ gesture: UIPinchGestureRecognizer) {
-        if gesture.state == .changed {
-            // Convert scale to a magnitude delta (scale 1.0 = no change)
-            let magnitude = Double(gesture.scale - 1.0) * 100.0
-            if magnitude != 0 {
-                // keyCode 1 signals magnification gesture to the sender
-                inputDelegate?.didTriggerInput(InputEvent(type: .scrollWheel, keyCode: 1, deltaY: magnitude))
-            }
-            gesture.scale = 1.0 // Reset for incremental deltas
-        }
-    }
-
     @objc private func handleScroll(_ gesture: UIPanGestureRecognizer) {
         if gesture.state == .changed {
             let translation = gesture.translation(in: self)
