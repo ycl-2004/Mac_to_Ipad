@@ -2,12 +2,18 @@ import Foundation
 import ScreenCaptureKit
 import CoreMedia
 
+protocol ScreenRecorderDelegate: AnyObject {
+    func screenRecorderDidStopUnexpectedly(_ recorder: ScreenRecorder)
+}
+
 class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
     private var stream: SCStream?
     private var videoEncoder: VideoEncoder?
     private var targetDisplayID: CGDirectDisplayID?
     var audioEncoder: AudioEncoder?
     var captureAudio: Bool = false
+    weak var delegate: ScreenRecorderDelegate?
+    private var isStoppingIntentionally = false
 
     private var width: Int
     private var height: Int
@@ -90,9 +96,11 @@ class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
     }
     
     func stopCapture() {
+        isStoppingIntentionally = true
         Task {
             try? await stream?.stopCapture()
             stream = nil
+            isStoppingIntentionally = false
         }
     }
     
@@ -123,5 +131,8 @@ class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
     // SCStreamDelegate
     func stream(_ stream: SCStream, didStopWithError error: Error) {
         LogManager.shared.log("ScreenRecorder: Stream stopped with error: \(error.localizedDescription)")
+        if !isStoppingIntentionally {
+            delegate?.screenRecorderDidStopUnexpectedly(self)
+        }
     }
 }

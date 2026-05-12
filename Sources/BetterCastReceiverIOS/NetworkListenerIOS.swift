@@ -491,7 +491,7 @@ class NetworkListenerIOS {
 
         // Auto-detect framing on first frame
         if connectionFormat[connId] == nil {
-            if firstByte == 0x01 || firstByte == 0x02 {
+            if firstByte == 0x01 || firstByte == 0x02 || firstByte == 0x03 {
                 connectionFormat[connId] = true
                 LogManager.shared.log("ReceiverIOS: Detected type-byte framing (desktop sender)")
             } else {
@@ -507,6 +507,9 @@ class NetworkListenerIOS {
                 videoDecoder?.decode(data: payload)
             } else if firstByte == 0x02 {
                 audioPlayer?.decode(aacData: payload)
+            } else if firstByte == 0x03 {
+                LogManager.shared.log("ReceiverIOS: Sender stopped sharing")
+                removeConnection(connection)
             }
         } else {
             // Legacy framing: raw video data (with 8-byte PTS prefix handled by decoder)

@@ -729,14 +729,18 @@ struct SidebarView: View {
                     }
                 } else {
                     ForEach(client.foundServices.filter { service in
+                        let serviceKey = canonicalDeviceName(service.name)
                         let isADBSynthetic = service.name.contains("Android (USB)") || service.name.contains("Android (WiFi ADB)")
                         let hasMDNSAndroid = client.foundServices.contains(where: {
                             $0.name.lowercased().contains("android") && !$0.name.contains("Android (USB)") && !$0.name.contains("Android (WiFi ADB)")
                         })
                         // Hide " P2P" entry when base device exists (merged into one entry)
                         let isP2PDuplicate = service.name.hasSuffix(" P2P")
-                            && client.foundServices.contains(where: { $0.name == String(service.name.dropLast(4)) })
-                        return !(isADBSynthetic && hasMDNSAndroid) && !isP2PDuplicate
+                            && client.foundServices.contains(where: { canonicalDeviceName($0.name) == serviceKey && $0.name != service.name })
+                        let duplicateDiscovered = client.foundServices.contains(where: {
+                            canonicalDeviceName($0.name) == serviceKey && $0.name < service.name
+                        })
+                        return !(isADBSynthetic && hasMDNSAndroid) && !isP2PDuplicate && !duplicateDiscovered
                     }, id: \.name) { service in
                         SidebarDeviceRow(service: service, client: client, selection: $selection)
                     }
@@ -744,13 +748,17 @@ struct SidebarView: View {
 
                 // Connected ADB tunnels not in foundServices
                 ForEach(client.connectedDisplays.filter { display in
-                    let inFoundServices = client.foundServices.contains(where: { $0.name == display.name })
+                    let displayKey = canonicalDeviceName(display.name)
+                    let inFoundServices = client.foundServices.contains(where: { canonicalDeviceName($0.name) == displayKey })
                     let isADBDuplicate = (display.name.contains("Android (USB)") || display.name.contains("Android (WiFi ADB)"))
                         && client.foundServices.contains(where: { $0.name.lowercased().contains("android") })
                     // Hide " P2P" connected entry when base device is also connected
                     let isP2PConnected = display.name.hasSuffix(" P2P")
-                        && client.connectedDisplays.contains(where: { $0.name == String(display.name.dropLast(4)) })
-                    return !inFoundServices && !isADBDuplicate && !isP2PConnected
+                        && client.connectedDisplays.contains(where: { canonicalDeviceName($0.name) == displayKey && $0.name != display.name })
+                    let duplicateConnected = client.connectedDisplays.contains(where: {
+                        canonicalDeviceName($0.name) == displayKey && $0.name < display.name
+                    })
+                    return !inFoundServices && !isADBDuplicate && !isP2PConnected && !duplicateConnected
                 }) { display in
                     sidebarRow(display.name, subtitle: display.resolution, icon: "display", tag: .device(display.id), iconTint: .green)
                 }
@@ -841,7 +849,8 @@ struct SidebarDeviceRow: View {
 
     /// Connected directly (same service name) or via ADB tunnel
     private var isConnected: Bool {
-        if client.connectedServices.contains(where: { $0.name == service.name }) { return true }
+        let serviceKey = canonicalDeviceName(service.name)
+        if client.connectedServices.contains(where: { canonicalDeviceName($0.name) == serviceKey }) { return true }
         // Android: also count ADB tunnel connections
         if isAndroid {
             return client.connectedDisplays.contains(where: {
@@ -853,7 +862,8 @@ struct SidebarDeviceRow: View {
 
     /// Find the connected display ID for this device (direct or ADB)
     private var connectedDisplayId: UUID? {
-        if let display = client.connectedDisplays.first(where: { $0.name == service.name }) {
+        let serviceKey = canonicalDeviceName(service.name)
+        if let display = client.connectedDisplays.first(where: { canonicalDeviceName($0.name) == serviceKey }) {
             return display.id
         }
         if isAndroid {
@@ -872,7 +882,8 @@ struct SidebarDeviceRow: View {
         if client.connectedDisplays.contains(where: { $0.name.contains("Android (WiFi ADB)") }) {
             return "Connected (WiFi ADB)"
         }
-        if client.connectedServices.contains(where: { $0.name == service.name }) {
+        let serviceKey = canonicalDeviceName(service.name)
+        if client.connectedServices.contains(where: { canonicalDeviceName($0.name) == serviceKey }) {
             return "Connected (WiFi)"
         }
         return "Available"
@@ -927,6 +938,13 @@ struct SidebarDeviceRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            Button(role: .destructive) {
+                client.forgetDevice(named: service.name)
+            } label: {
+                Label("Remove Device", systemImage: "trash")
+            }
+        }
         .listRowBackground(
             isSelected
                 ? RoundedRectangle(cornerRadius: 6).fill(Color.accentColor.opacity(0.1))
@@ -1046,7 +1064,12 @@ struct DetailPanelView: View {
     /// Discovered services that are not yet connected
     private var availableDevices: [DiscoveredService] {
         client.foundServices.filter { service in
-            !client.connectedServices.contains(where: { $0.name == service.name })
+            let serviceKey = canonicalDeviceName(service.name)
+            let isConnected = client.connectedServices.contains(where: { canonicalDeviceName($0.name) == serviceKey })
+            let isDuplicate = client.foundServices.contains(where: {
+                canonicalDeviceName($0.name) == serviceKey && $0.name < service.name
+            })
+            return !isConnected && !isDuplicate
         }
     }
 
@@ -1073,6 +1096,14 @@ struct DetailPanelView: View {
                                 client.connect(to: service)
                             }
                             .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+
+                            Button(role: .destructive) {
+                                client.forgetDevice(named: service.name)
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                            .buttonStyle(.bordered)
                             .controlSize(.small)
                         }
                     }
@@ -1258,7 +1289,27 @@ struct DetailPanelView: View {
                             .buttonStyle(.bordered)
                             .controlSize(.small)
                             .tint(.red)
+
+                            Button(role: .destructive) {
+                                client.forgetDevice(named: display.name)
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
                         }
+                    }
+                }
+            }
+            if !client.hiddenDeviceKeys.isEmpty {
+                Section("Hidden Devices") {
+                    LabeledContent("Removed devices") {
+                        Text("\(client.hiddenDeviceKeys.count)")
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Button("Show Hidden Devices") {
+                        client.showHiddenDevices()
                     }
                 }
             }
@@ -1931,6 +1982,13 @@ struct DeviceDetailView: View {
                         selection = .settings
                     }
                     .tint(.red)
+
+                    Button(role: .destructive) {
+                        client.forgetDevice(named: display.name)
+                        selection = .settings
+                    } label: {
+                        Label("Remove Device", systemImage: "trash")
+                    }
                 }
             }
         }
@@ -1950,7 +2008,8 @@ struct DiscoveredDeviceView: View {
 
     /// Check if this device is connected via any method (direct or ADB)
     private var connectedDisplay: ConnectedDisplayInfo? {
-        if let d = client.connectedDisplays.first(where: { $0.name == service.name }) { return d }
+        let serviceKey = canonicalDeviceName(service.name)
+        if let d = client.connectedDisplays.first(where: { canonicalDeviceName($0.name) == serviceKey }) { return d }
         if isAndroid {
             return client.connectedDisplays.first(where: {
                 $0.name.contains("Android (USB)") || $0.name.contains("Android (WiFi ADB)")
@@ -2187,6 +2246,24 @@ struct DiscoveredService: Identifiable {
     let endpoint: NWEndpoint
 }
 
+private func canonicalDeviceName(_ name: String) -> String {
+    var result = name.trimmingCharacters(in: .whitespacesAndNewlines)
+
+    if result.hasSuffix(" P2P") {
+        result = String(result.dropLast(4)).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    while result.hasSuffix(")") {
+        guard let openParen = result.range(of: " (", options: .backwards),
+              result[openParen.upperBound...].dropLast().allSatisfy(\.isNumber) else {
+            break
+        }
+        result = String(result[..<openParen.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    return result
+}
+
 enum StreamQuality: Int, CaseIterable, Identifiable {
     case low = 5_000_000
     case medium = 10_000_000
@@ -2294,8 +2371,9 @@ private enum PairingTransportError: LocalizedError {
     }
 }
 
-class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegate {
+class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegate, ScreenRecorderDelegate {
     private static let displayPlacementDefaultsKey = "displayPlacement"
+    private static let hiddenDeviceKeysDefaultsKey = "hiddenDeviceKeys"
 
     private var browser: NWBrowser?
     private var pipelines: [UUID: ConnectionPipeline] = [:]
@@ -2305,6 +2383,7 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
     @Published private(set) var hasPairingSecret: Bool = false
     @Published var foundServices: [DiscoveredService] = []
     @Published var connectedServices: [DiscoveredService] = []
+    @Published var hiddenDeviceKeys: Set<String> = []
     private var connectingServiceNames: Set<String> = [] // Prevent double-connect race
     @Published var useVirtualDisplay: Bool = true // Toggle between mirroring and extended display
     @Published var audioStreamingEnabled: Bool = false { // Master toggle for audio streaming
@@ -2379,6 +2458,55 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
 
     var isConnected: Bool { !pipelines.isEmpty }
 
+    private func deviceKey(for name: String) -> String {
+        canonicalDeviceName(name)
+    }
+
+    private func saveHiddenDeviceKeys() {
+        UserDefaults.standard.set(Array(hiddenDeviceKeys), forKey: Self.hiddenDeviceKeysDefaultsKey)
+    }
+
+    private func removeExistingConnections(matching service: DiscoveredService, keeping connectionId: UUID? = nil) {
+        let key = deviceKey(for: service.name)
+        let duplicateIds = pipelines.compactMap { id, pipeline -> UUID? in
+            guard id != connectionId, deviceKey(for: pipeline.service.name) == key else { return nil }
+            return id
+        }
+
+        for id in duplicateIds {
+            LogManager.shared.log("Sender: Removing duplicate connection for \(service.name)")
+            removeConnection(id)
+        }
+
+        connectedServices.removeAll { deviceKey(for: $0.name) == key && $0.name != service.name }
+    }
+
+    func forgetDevice(named name: String) {
+        let key = deviceKey(for: name)
+        let matchingIds = pipelines.compactMap { id, pipeline in
+            deviceKey(for: pipeline.service.name) == key ? id : nil
+        }
+
+        for id in matchingIds {
+            removeConnection(id)
+        }
+
+        foundServices.removeAll { deviceKey(for: $0.name) == key }
+        connectedServices.removeAll { deviceKey(for: $0.name) == key }
+        connectingServiceNames.remove(key)
+        hiddenDeviceKeys.insert(key)
+        saveHiddenDeviceKeys()
+        LogManager.shared.log("Sender: Forgot device \(name)")
+    }
+
+    func showHiddenDevices() {
+        hiddenDeviceKeys.removeAll()
+        saveHiddenDeviceKeys()
+        browser?.cancel()
+        startBrowsing()
+        LogManager.shared.log("Sender: Cleared hidden devices")
+    }
+
 
     func startBrowsing() {
         let typeVal = BCConstants.tcpServiceType
@@ -2425,13 +2553,15 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
                         services.append(existing)
                     }
                 }
+                services.removeAll { self.hiddenDeviceKeys.contains(self.deviceKey(for: $0.name)) }
                 self.foundServices = services
 
                 // Auto-connect to newly discovered services
                 if self.autoConnect {
                     for service in services {
-                        if !self.connectedServices.contains(where: { $0.name == service.name })
-                            && !self.connectingServiceNames.contains(service.name) {
+                        let serviceKey = self.deviceKey(for: service.name)
+                        if !self.connectedServices.contains(where: { self.deviceKey(for: $0.name) == serviceKey })
+                            && !self.connectingServiceNames.contains(serviceKey) {
                             // Skip ADB synthetic entries
                             if service.name.contains("Android (USB)") || service.name.contains("Android (WiFi ADB)") { continue }
                             // Skip " P2P" duplicate — sender uses P2P automatically for Apple devices
@@ -2462,6 +2592,7 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         refreshPairingState()
         displayPlacement = UserDefaults.standard.string(forKey: Self.displayPlacementDefaultsKey)
             .flatMap(VirtualDisplayManager.DisplayPlacement.init(rawValue:)) ?? .right
+        hiddenDeviceKeys = Set(UserDefaults.standard.stringArray(forKey: Self.hiddenDeviceKeysDefaultsKey) ?? [])
         
         // We can't monitor recursively in init easily, but we can start it.
         interfaceMonitor.pathUpdateHandler = { [weak self] path in
@@ -2675,6 +2806,8 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         forceTCP: Bool = false,
         sessionKey: Data
     ) {
+        removeExistingConnections(matching: service, keeping: connectionId)
+
         // Create pipeline for this connection only after pairing authentication succeeds.
         var pipeline = ConnectionPipeline(
             id: connectionId,
@@ -2694,6 +2827,7 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         pipeline.supportsTypeByte = !isLegacyReceiver
 
         pipelines[connectionId] = pipeline
+        connectedServices.removeAll { deviceKey(for: $0.name) == deviceKey(for: service.name) }
         connectedServices.append(service)
         updateConnectedDisplays()
 
@@ -2719,8 +2853,9 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         isLoopback: Bool,
         forceTCP: Bool = false
     ) {
+        let serviceKey = deviceKey(for: service.name)
         guard let secret = loadPairingSecret() else {
-            connectingServiceNames.remove(service.name)
+            connectingServiceNames.remove(serviceKey)
             status = "Pairing required before connecting"
             LogManager.shared.log("Pairing: Missing pairing code; refusing to stream to \(service.name)")
             connection.cancel()
@@ -2731,7 +2866,7 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         performPairingHandshake(on: connection, secret: secret) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self else { return }
-                self.connectingServiceNames.remove(service.name)
+                self.connectingServiceNames.remove(serviceKey)
 
                 switch result {
                 case .success(let sessionKey):
@@ -2816,16 +2951,17 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
     }
     
     func connect(to service: DiscoveredService) {
+        let serviceKey = deviceKey(for: service.name)
         // Check if already connected or currently connecting to this service
-        if connectedServices.contains(where: { $0.name == service.name }) {
+        if connectedServices.contains(where: { deviceKey(for: $0.name) == serviceKey }) {
             LogManager.shared.log("Sender: Already connected to \(service.name)")
             return
         }
-        if connectingServiceNames.contains(service.name) {
+        if connectingServiceNames.contains(serviceKey) {
             LogManager.shared.log("Sender: Already connecting to \(service.name) — ignoring duplicate")
             return
         }
-        connectingServiceNames.insert(service.name)
+        connectingServiceNames.insert(serviceKey)
 
         let deviceCount = pipelines.count + 1
         self.status = "Connecting to \(service.name) (Device #\(deviceCount))..."
@@ -2899,7 +3035,7 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
             // Only retry if still not connected (no pipeline created yet)
             if self.pipelines[connectionId] == nil && !connectionTimedOut {
                 connectionTimedOut = true
-                self.connectingServiceNames.remove(service.name)
+                self.connectingServiceNames.remove(serviceKey)
                 connection.cancel()
 
                 guard canRetryViaInfrastructure else {
@@ -2954,7 +3090,7 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
                     )
                 case .failed(let error):
                     timeoutWork.cancel()
-                    self?.connectingServiceNames.remove(service.name)
+                    self?.connectingServiceNames.remove(serviceKey)
                     LogManager.shared.log("Sender: Connection to \(service.name) failed: \(error)")
                     self?.removeConnection(connectionId)
 
@@ -2991,7 +3127,8 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         let service = DiscoveredService(name: "\(host):\(portNum)", endpoint: endpoint)
 
         // Add to foundServices so it appears in the Devices list with status/disconnect
-        if !foundServices.contains(where: { $0.name == service.name }) {
+        let serviceKey = deviceKey(for: service.name)
+        if !foundServices.contains(where: { deviceKey(for: $0.name) == serviceKey }) {
             foundServices.append(service)
         }
 
@@ -3293,7 +3430,8 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         let service = DiscoveredService(name: displayName, endpoint: endpoint)
 
         // Add to foundServices so it shows in the device list
-        if !foundServices.contains(where: { $0.name == displayName }) {
+        let serviceKey = deviceKey(for: displayName)
+        if !foundServices.contains(where: { deviceKey(for: $0.name) == serviceKey }) {
             foundServices.append(service)
         }
 
@@ -3308,13 +3446,18 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
     }
 
     private func connectWithParameters(service: DiscoveredService, parameters: NWParameters, forceTCP: Bool = false) {
-        if connectedServices.contains(where: { $0.name == service.name }) {
+        let serviceKey = deviceKey(for: service.name)
+        if connectedServices.contains(where: { deviceKey(for: $0.name) == serviceKey }) {
             LogManager.shared.log("Sender: Already connected to \(service.name)")
+            return
+        }
+        if connectingServiceNames.contains(serviceKey) {
+            LogManager.shared.log("Sender: Already connecting to \(service.name) — ignoring duplicate")
             return
         }
 
         // Mark as connecting to prevent auto-connect races during retry
-        connectingServiceNames.insert(service.name)
+        connectingServiceNames.insert(serviceKey)
 
         let deviceCount = pipelines.count + 1
         self.status = "Connecting to \(service.name) (Device #\(deviceCount))..."
@@ -3354,7 +3497,7 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
                     )
                 case .failed(let error):
                     LogManager.shared.log("Sender: Connection to \(service.name) failed: \(error)")
-                    self?.connectingServiceNames.remove(service.name)
+                    self?.connectingServiceNames.remove(serviceKey)
                     self?.removeConnection(connectionId)
 
                     let remaining = self?.pipelines.count ?? 0
@@ -3544,11 +3687,19 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         // Tear down this connection's pipeline
         pipeline.screenRecorder?.stopCapture()
         pipeline.virtualDisplayManager?.destroyDisplay()
-        pipeline.connection.cancel()
+        let didSendDisconnectNotice = sendDisconnectNotice(for: pipeline)
+        if didSendDisconnectNotice {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                pipeline.connection.cancel()
+            }
+        } else {
+            pipeline.connection.cancel()
+        }
         InputHandler.shared.removeDisplayBounds(for: connectionId)
 
         pipelines.removeValue(forKey: connectionId)
-        connectedServices.removeAll { $0.name == pipeline.service.name }
+        let removedKey = deviceKey(for: pipeline.service.name)
+        connectedServices.removeAll { deviceKey(for: $0.name) == removedKey }
 
         let remaining = pipelines.count
         LogManager.shared.log("Sender: Disconnected from \(pipeline.service.name). Remaining: \(remaining)")
@@ -3560,6 +3711,25 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
             status = "Connected to \(remaining) device(s)"
         }
         updateConnectedDisplays()
+    }
+
+    private func sendDisconnectNotice(for pipeline: ConnectionPipeline) -> Bool {
+        guard pipeline.supportsTypeByte else { return false }
+
+        var packet = Data()
+        let payload = Data([0x03])
+        var lengthPrefix = UInt32(payload.count).bigEndian
+        packet.append(Data(bytes: &lengthPrefix, count: 4))
+        packet.append(payload)
+
+        pipeline.connection.send(content: packet, completion: .contentProcessed { error in
+            if let error {
+                LogManager.shared.log("Sender: Disconnect notice to \(pipeline.service.name) failed: \(error.localizedDescription)")
+            } else {
+                LogManager.shared.log("Sender: Sent disconnect notice to \(pipeline.service.name)")
+            }
+        })
+        return true
     }
 
     func disconnect() {
@@ -3577,7 +3747,8 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
     }
 
     func disconnectService(_ service: DiscoveredService) {
-        if let entry = pipelines.first(where: { $0.value.service.name == service.name }) {
+        let serviceKey = deviceKey(for: service.name)
+        if let entry = pipelines.first(where: { deviceKey(for: $0.value.service.name) == serviceKey }) {
             removeConnection(entry.key)
         }
     }
@@ -3598,7 +3769,10 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
     }
 
     func updateConnectedDisplays() {
-        connectedDisplays = pipelines.map { (id, pipeline) in
+        var seenDeviceKeys: Set<String> = []
+        connectedDisplays = pipelines.compactMap { (id, pipeline) in
+            let key = deviceKey(for: pipeline.service.name)
+            guard seenDeviceKeys.insert(key).inserted else { return nil }
             let bounds = InputHandler.shared.getDisplayBounds(for: id)
             let res = bounds.width > 0 ? "\(Int(bounds.width))x\(Int(bounds.height))" : "Initializing..."
             return ConnectedDisplayInfo(
@@ -3888,6 +4062,7 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
             height: captureHeight,
             captureFPS: Int32(fps)
         )
+        recorder.delegate = self
         recorder.captureAudio = audioEnabled
         recorder.audioEncoder = audioEnc
         pipelines[connectionId]?.screenRecorder = recorder
@@ -3895,6 +4070,12 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         Task {
             await recorder.startCapture()
         }
+    }
+
+    func screenRecorderDidStopUnexpectedly(_ recorder: ScreenRecorder) {
+        guard let entry = pipelines.first(where: { $0.value.screenRecorder === recorder }) else { return }
+        LogManager.shared.log("Sender: Screen sharing stopped by system for \(entry.value.service.name)")
+        removeConnection(entry.key)
     }
 
     private func preferredReceiverDisplaySize(for connectionId: UUID) -> ReceiverDisplaySize? {
