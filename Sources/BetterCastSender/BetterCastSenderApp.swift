@@ -2326,11 +2326,14 @@ private struct ReceiverDisplaySize {
 struct ConnectionPipeline {
     let id: UUID
     let connection: NWConnection
+    let streamEndpoint: NWEndpoint
     let service: DiscoveredService
     var lastHeartbeat: Date
     var sessionKey: Data
 
     // Per-connection components (isolated pipeline)
+    var audioConnection: NWConnection?
+    var audioSessionKey: Data?
     var virtualDisplayManager: VirtualDisplayManager?
     var screenRecorder: ScreenRecorder?
     var videoEncoder: VideoEncoder?
@@ -2341,6 +2344,8 @@ struct ConnectionPipeline {
     var isP2P: Bool = false
     // Loopback connections (ADB tunnel via lo0) — high bandwidth, skip backpressure
     var isLoopback: Bool = false
+    // USB-C / Thunderbolt / Ethernet-style direct links — higher bandwidth than router Wi-Fi
+    var isWiredCable: Bool = false
     // TCP backpressure: skip frames while a send is still in flight
     var sendInProgress: Bool = false
     // Time-based send pacing for WiFi ADB (prevents kernel buffer bloat)
@@ -2829,8 +2834,10 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         _ connection: NWConnection,
         connectionId: UUID,
         service: DiscoveredService,
+        streamEndpoint: NWEndpoint,
         isP2P: Bool,
         isLoopback: Bool,
+        isWiredCable: Bool,
         forceTCP: Bool = false,
         sessionKey: Data
     ) {
@@ -2840,12 +2847,14 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         var pipeline = ConnectionPipeline(
             id: connectionId,
             connection: connection,
+            streamEndpoint: streamEndpoint,
             service: service,
             lastHeartbeat: Date(),
             sessionKey: sessionKey
         )
         pipeline.isP2P = isP2P
         pipeline.isLoopback = isLoopback
+        pipeline.isWiredCable = isWiredCable
         pipeline.forceTCP = forceTCP
         pipeline.isWiFiADB = isLoopback && service.name.contains("WiFi")
 
@@ -2877,8 +2886,10 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         _ connection: NWConnection,
         connectionId: UUID,
         service: DiscoveredService,
+        streamEndpoint: NWEndpoint,
         isP2P: Bool,
         isLoopback: Bool,
+        isWiredCable: Bool,
         forceTCP: Bool = false
     ) {
         let serviceKey = deviceKey(for: service.name)
@@ -2902,8 +2913,10 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
                         connection,
                         connectionId: connectionId,
                         service: service,
+                        streamEndpoint: streamEndpoint,
                         isP2P: isP2P,
                         isLoopback: isLoopback,
+                        isWiredCable: isWiredCable,
                         forceTCP: forceTCP,
                         sessionKey: sessionKey
                     )
@@ -2914,6 +2927,107 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
                     self.removeConnection(connectionId)
                 }
             }
+        }
+    }
+
+    private func makeDedicatedAudioParameters(for pipeline: ConnectionPipeline) -> NWParameters {
+        let tcpOptions = NWProtocolTCP.Options()
+        tcpOptions.enableKeepalive = true
+        tcpOptions.noDelay = true
+        tcpOptions.connectionTimeout = 10
+
+        let parameters = NWParameters(tls: nil, tcp: tcpOptions)
+        parameters.serviceClass = .interactiveVideo
+        parameters.preferNoProxies = true
+
+        if pipeline.isP2P {
+            parameters.includePeerToPeer = true
+            if let awdl = cachedAWDLInterface {
+                parameters.requiredInterface = awdl
+            }
+        } else if pipeline.isLoopback {
+            parameters.includePeerToPeer = false
+        } else if pipeline.isWiredCable {
+            parameters.includePeerToPeer = false
+            parameters.prohibitedInterfaceTypes = [.loopback, .wifi]
+        } else {
+            parameters.includePeerToPeer = interfacePreference != .routerOnly
+        }
+
+        return parameters
+    }
+
+    private func startDedicatedAudioConnection(for connectionId: UUID) {
+        guard let pipeline = pipelines[connectionId], pipeline.supportsTypeByte else { return }
+        guard pipeline.audioConnection == nil else { return }
+        guard let secret = loadPairingSecret() else {
+            LogManager.shared.log("AudioConnection: Missing pairing secret for \(pipeline.service.name)")
+            return
+        }
+
+        let audioConnection = NWConnection(
+            to: pipeline.streamEndpoint,
+            using: makeDedicatedAudioParameters(for: pipeline)
+        )
+        let serviceName = pipeline.service.name
+
+        audioConnection.stateUpdateHandler = { [weak self] state in
+            DispatchQueue.main.async {
+                guard let self else { return }
+
+                switch state {
+                case .ready:
+                    self.performPairingHandshake(on: audioConnection, secret: secret) { [weak self] result in
+                        DispatchQueue.main.async {
+                            guard let self else { return }
+
+                            switch result {
+                            case .success(let sessionKey):
+                                guard self.pipelines[connectionId] != nil else {
+                                    audioConnection.cancel()
+                                    return
+                                }
+                                self.pipelines[connectionId]?.audioConnection = audioConnection
+                                self.pipelines[connectionId]?.audioSessionKey = sessionKey
+                                LogManager.shared.log("AudioConnection: Dedicated audio TCP ready for \(serviceName)")
+                                self.receiveAuxiliary(on: audioConnection, connectionId: connectionId)
+                            case .failure(let error):
+                                audioConnection.cancel()
+                                LogManager.shared.log("AudioConnection: Authentication failed for \(serviceName): \(error.localizedDescription)")
+                            }
+                        }
+                    }
+                case .failed(let error):
+                    LogManager.shared.log("AudioConnection: Failed for \(serviceName): \(error)")
+                    if self.pipelines[connectionId]?.audioConnection === audioConnection {
+                        self.pipelines[connectionId]?.audioConnection = nil
+                        self.pipelines[connectionId]?.audioSessionKey = nil
+                    }
+                case .cancelled:
+                    if self.pipelines[connectionId]?.audioConnection === audioConnection {
+                        self.pipelines[connectionId]?.audioConnection = nil
+                        self.pipelines[connectionId]?.audioSessionKey = nil
+                    }
+                default:
+                    break
+                }
+            }
+        }
+
+        audioConnection.start(queue: .main)
+    }
+
+    private func isLikelyWiredCablePath(_ path: NWPath) -> Bool {
+        if path.usesInterfaceType(.wiredEthernet) {
+            return true
+        }
+        if path.usesInterfaceType(.wifi) || path.usesInterfaceType(.loopback) {
+            return false
+        }
+
+        return path.availableInterfaces.contains { interface in
+            let name = interface.name.lowercased()
+            return name.hasPrefix("en") || name.contains("bridge") || name.contains("thunderbolt")
         }
     }
 
@@ -2931,9 +3045,8 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         
         switch interfacePreference {
         case .auto:
-            parameters.requiredInterfaceType = .wifi
             parameters.serviceClass = .responsiveData
-            parameters.prohibitedInterfaceTypes = []
+            parameters.prohibitedInterfaceTypes = [.loopback]
             
         case .p2pOnly:
              // Direct binding to AWDL interface
@@ -3101,6 +3214,7 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
 
                     var isP2P = false
                     var isLoopback = false
+                    var isWiredCable = false
                     if let path = connection.currentPath {
                         let interfaces = path.availableInterfaces.map { $0.debugDescription }.joined(separator: ", ")
                         LogManager.shared.log("Sender: Connected via Path: \(path)")
@@ -3112,6 +3226,9 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
                         } else if interfaces.contains("lo0") || interfaces.contains("loopback") {
                             isLoopback = true
                             LogManager.shared.log("Sender: Loopback/ADB tunnel — high bandwidth mode 🔌")
+                        } else if self?.isLikelyWiredCablePath(path) == true {
+                            isWiredCable = true
+                            LogManager.shared.log("Sender: Wired/iPad USB path active ✅")
                         } else {
                             LogManager.shared.log("Sender: Likely using Router/Infrastructure ⚠️")
                         }
@@ -3121,8 +3238,10 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
                         connection,
                         connectionId: connectionId,
                         service: service,
+                        streamEndpoint: connectEndpoint,
                         isP2P: isP2P,
-                        isLoopback: isLoopback
+                        isLoopback: isLoopback,
+                        isWiredCable: isWiredCable
                     )
                 case .failed(let error):
                     timeoutWork.cancel()
@@ -3507,6 +3626,7 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
                 case .ready:
                     var isP2P = false
                     var isLoopback = false
+                    var isWiredCable = false
                     if let path = connection.currentPath {
                         let interfaces = path.availableInterfaces.map { $0.debugDescription }.joined(separator: ", ")
                         LogManager.shared.log("Sender: Connected via Path: \(path)")
@@ -3518,6 +3638,9 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
                         } else if interfaces.contains("lo0") || interfaces.contains("loopback") {
                             isLoopback = true
                             LogManager.shared.log("Sender: Loopback/ADB tunnel — high bandwidth mode 🔌")
+                        } else if self?.isLikelyWiredCablePath(path) == true {
+                            isWiredCable = true
+                            LogManager.shared.log("Sender: Wired/iPad USB path active ✅")
                         } else {
                             LogManager.shared.log("Sender: Likely using Router/Infrastructure ⚠️")
                         }
@@ -3527,8 +3650,10 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
                         connection,
                         connectionId: connectionId,
                         service: service,
+                        streamEndpoint: service.endpoint,
                         isP2P: isP2P,
                         isLoopback: isLoopback,
+                        isWiredCable: isWiredCable,
                         forceTCP: forceTCP
                     )
                 case .failed(let error):
@@ -3679,12 +3804,15 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         for (id, pipeline) in pipelines {
             pipeline.screenRecorder?.stopCapture()
             pipeline.processAudioCapture?.stop()
+            pipeline.audioConnection?.cancel()
             pipeline.virtualDisplayManager?.destroyDisplay()
             InputHandler.shared.removeDisplayBounds(for: id)
             pipelines[id]?.screenRecorder = nil
             pipelines[id]?.videoEncoder = nil
             pipelines[id]?.audioEncoder = nil
             pipelines[id]?.processAudioCapture = nil
+            pipelines[id]?.audioConnection = nil
+            pipelines[id]?.audioSessionKey = nil
             pipelines[id]?.virtualDisplayManager = nil
         }
 
@@ -3726,6 +3854,7 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         // Tear down this connection's pipeline
         pipeline.screenRecorder?.stopCapture()
         pipeline.processAudioCapture?.stop()
+        pipeline.audioConnection?.cancel()
         pipeline.virtualDisplayManager?.destroyDisplay()
         let didSendDisconnectNotice = sendDisconnectNotice(for: pipeline)
         if didSendDisconnectNotice {
@@ -3908,6 +4037,59 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         }
     }
 
+    private func receiveAuxiliary(on connection: NWConnection, connectionId: UUID) {
+        guard pipelines[connectionId] != nil else { return }
+
+        connection.receive(minimumIncompleteLength: 4, maximumLength: 4) { [weak self] content, _, isComplete, error in
+            if let error {
+                LogManager.shared.log("AudioConnection: Receive error: \(error)")
+                DispatchQueue.main.async {
+                    if self?.pipelines[connectionId]?.audioConnection === connection {
+                        self?.pipelines[connectionId]?.audioConnection = nil
+                        self?.pipelines[connectionId]?.audioSessionKey = nil
+                    }
+                }
+                return
+            }
+
+            guard let content, content.count == 4 else {
+                if isComplete {
+                    DispatchQueue.main.async {
+                        if self?.pipelines[connectionId]?.audioConnection === connection {
+                            self?.pipelines[connectionId]?.audioConnection = nil
+                            self?.pipelines[connectionId]?.audioSessionKey = nil
+                        }
+                    }
+                } else {
+                    self?.receiveAuxiliary(on: connection, connectionId: connectionId)
+                }
+                return
+            }
+
+            let length = content.withUnsafeBytes { $0.load(as: UInt32.self).bigEndian }
+            let bodyLength = Int(length)
+            connection.receive(minimumIncompleteLength: bodyLength, maximumLength: bodyLength) { [weak self] body, _, _, _ in
+                DispatchQueue.main.async {
+                    guard let self,
+                          let body,
+                          let pipeline = self.pipelines[connectionId],
+                          let sessionKey = pipeline.audioSessionKey else {
+                        return
+                    }
+
+                    if let envelope = try? JSONDecoder().decode(AuthenticatedEnvelope.self, from: body),
+                       let payload = try? envelope.verifiedPayload(sessionKey: sessionKey),
+                       let event = try? JSONDecoder().decode(InputEvent.self, from: payload),
+                       event.type == .command,
+                       event.keyCode == 888 {
+                        self.pipelines[connectionId]?.lastHeartbeat = Date()
+                    }
+                }
+                self?.receiveAuxiliary(on: connection, connectionId: connectionId)
+            }
+        }
+    }
+
     private func receiveUDP(on connection: NWConnection, connectionId: UUID) {
         LogManager.shared.log("Sender: UDP input path disabled in private build")
         removeConnection(connectionId)
@@ -3946,6 +4128,9 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         pipelines[connectionId]?.videoEncoder = nil
         pipelines[connectionId]?.processAudioCapture?.stop()
         pipelines[connectionId]?.processAudioCapture = nil
+        pipelines[connectionId]?.audioConnection?.cancel()
+        pipelines[connectionId]?.audioConnection = nil
+        pipelines[connectionId]?.audioSessionKey = nil
         pipelines[connectionId]?.audioEncoder = nil
         if let dm = pipelines[connectionId]?.virtualDisplayManager {
             dm.destroyDisplay()
@@ -4050,6 +4235,7 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         // Adaptive quality: P2P gets full, loopback (ADB) gets medium-high, infrastructure gets capped
         let isP2P = pipelines[connectionId]?.isP2P ?? false
         let isLoopback = pipelines[connectionId]?.isLoopback ?? false
+        let isWiredCable = pipelines[connectionId]?.isWiredCable ?? false
         let fps: Int
         let bitrate: Int
         let keyframeInterval: Double
@@ -4057,6 +4243,11 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
             fps = 60  // AWDL can't sustain 120fps at typical bitrates; 60fps = 2x bits per frame
             bitrate = selectedQuality.rawValue
             keyframeInterval = 10.0 // P2P is reliable, long interval is fine
+        } else if isWiredCable {
+            fps = 60
+            bitrate = selectedQuality.rawValue
+            keyframeInterval = 10.0
+            LogManager.shared.log("Sender: USB/Cable mode — \(fps) FPS / \(bitrate / 1_000_000) Mbps / KF every 10s for \(serviceName)")
         } else if isLoopback {
             let isWiFiADB = pipelines[connectionId]?.isWiFiADB ?? false
             if isWiFiADB {
@@ -4078,16 +4269,17 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
             // 30 FPS matches actual WiFi throughput — avoids frame drops that cause glitching.
             // Each frame gets 2x bit budget vs 60 FPS = sharper motion.
             fps = 30
-            bitrate = selectedQuality.rawValue  // Use full user-selected bitrate
+            bitrate = min(selectedQuality.rawValue, StreamQuality.high.rawValue)
             keyframeInterval = 2.0  // Short interval for fast error recovery over WiFi
-            LogManager.shared.log("Sender: Infrastructure mode — \(fps) FPS / \(bitrate / 1_000_000) Mbps / KF every 2s for \(serviceName)")
+            let capNote = bitrate < selectedQuality.rawValue ? " (capped from \(selectedQuality.rawValue / 1_000_000) Mbps for WiFi stability)" : ""
+            LogManager.shared.log("Sender: Infrastructure mode — \(fps) FPS / \(bitrate / 1_000_000) Mbps / KF every 2s\(capNote) for \(serviceName)")
         }
 
         LogManager.shared.log("Sender: Pipeline \(serviceName): \(captureWidth)x\(captureHeight)\(receiverDisplaySize != nil ? " (native capture)" : "") @ \(selectedQuality.name) [\(fps) FPS, P2P: \(isP2P)]")
 
         // P2P: tight 0.1s rate limit window prevents AWDL buffer bloat
         // Infrastructure: loose 1.0s window lets the encoder handle burst scenes naturally
-        let rateLimitWindow: Double = isP2P ? 0.1 : 1.0
+        let rateLimitWindow: Double = (isP2P || isWiredCable) ? 0.1 : 1.0
         let encoder = VideoEncoder(connectionId: connectionId, width: captureWidth, height: captureHeight, bitrate: bitrate, expectedFPS: fps, keyframeIntervalSeconds: keyframeInterval, rateLimitWindow: rateLimitWindow)
         encoder.delegate = self
         pipelines[connectionId]?.videoEncoder = encoder
@@ -4101,6 +4293,7 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
             pipelines[connectionId]?.audioEncoder = ae
             audioEnc = ae
             LogManager.shared.log("Sender: Audio encoder created for \(serviceName)")
+            startDedicatedAudioConnection(for: connectionId)
         }
 
         var useScreenCaptureAudio = false
@@ -4213,9 +4406,9 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
 
         // TCP backpressure: skip P-frame if previous send still in flight.
         // NEVER drop keyframes — the decoder needs them to recover.
-        // P2P / Loopback: no backpressure (reliable links).
+        // P2P / Loopback / wired iPad USB: no completion backpressure (reliable links).
         // Infrastructure only: completion-based backpressure.
-        if !pipeline.isP2P && !pipeline.isLoopback && useTCP && !isKeyframe {
+        if !pipeline.isP2P && !pipeline.isLoopback && !pipeline.isWiredCable && useTCP && !isKeyframe {
             if pipeline.sendInProgress {
                 return
             }
@@ -4337,9 +4530,12 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
 
         bytesSentWindow += packet.count
 
-        pipeline.connection.send(content: packet, completion: .contentProcessed { error in
+        let audioConnection = pipeline.audioConnection ?? pipeline.connection
+        let usingDedicatedAudio = pipeline.audioConnection != nil
+
+        audioConnection.send(content: packet, completion: .contentProcessed { error in
             if let error = error {
-                LogManager.shared.log("Sender: Audio send error to \(pipeline.service.name): \(error)")
+                LogManager.shared.log("Sender: Audio send error to \(pipeline.service.name) (\(usingDedicatedAudio ? "dedicated" : "main")): \(error)")
             }
         })
     }
