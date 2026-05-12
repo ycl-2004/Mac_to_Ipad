@@ -8,10 +8,12 @@
     <string>BetterCastReceiverIOS</string>
     <key>CFBundleIdentifier</key>
     <string>com.yichen.privatebettercast.receiver.ios</string>
+    <key>CFBundleDisplayName</key>
+    <string>YC Cast</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>BetterCast</string>
+    <string>YC Cast</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -34,7 +36,7 @@
     <key>UIRequiresFullScreen</key>
     <true/>
     <key>NSLocalNetworkUsageDescription</key>
-    <string>BetterCast uses the local network to connect to your Mac.</string>
+    <string>YC Cast uses the local network to connect to your Mac.</string>
     <key>NSBonjourServices</key>
     <array>
         <string>_yc-bettercast._tcp</string>

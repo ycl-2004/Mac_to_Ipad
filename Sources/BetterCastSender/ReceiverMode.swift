@@ -48,7 +48,7 @@ class ReceiverWindowController {
             backing: .buffered,
             defer: false
         )
-        w.title = "BetterCast — Receiving"
+        w.title = "YC Cast — Receiving"
         w.backgroundColor = .black
         w.isReleasedWhenClosed = false
         w.contentMinSize = NSSize(width: 320, height: 180)
@@ -146,9 +146,9 @@ class ReceiverWindowController {
     func updateTitle(senderCount: Int) {
         guard let w = window else { return }
         if senderCount > 0 {
-            w.title = "BetterCast — \(senderCount) sender\(senderCount == 1 ? "" : "s")"
+            w.title = "YC Cast — \(senderCount) sender\(senderCount == 1 ? "" : "s")"
         } else {
-            w.title = "BetterCast — Receiving"
+            w.title = "YC Cast — Receiving"
         }
     }
 }
@@ -394,7 +394,7 @@ struct ReceiverModeView: View {
     private var statusSubtitle: String {
         if isConnected { return "Video is playing in a separate window." }
         if manager.isRunning { return "Listening for incoming connections..." }
-        return "Start listening to receive screen streams from other BetterCast senders."
+        return "Start listening to receive screen streams from other YC Cast senders."
     }
 
     private func refreshLocalIPs() {

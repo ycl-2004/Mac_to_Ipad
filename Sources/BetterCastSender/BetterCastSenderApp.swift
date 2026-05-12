@@ -140,8 +140,8 @@ struct GuidedTourOverlay: View {
 
     private let steps: [TourStep] = [
         TourStep(
-            title: "Welcome to BetterCast",
-            description: "Let's take a quick tour of the app. BetterCast turns any device into a wireless extended display for your Mac.",
+            title: "Welcome to YC Cast",
+            description: "Let's take a quick tour of the app. YC Cast turns any device into a wireless extended display for your Mac.",
             icon: "hand.wave.fill",
             sidebarTarget: nil,
             anchorKey: nil
@@ -375,7 +375,7 @@ struct OnboardingView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 18))
                     .shadow(color: .black.opacity(0.15), radius: 8, y: 4)
 
-                Text("Welcome to BetterCast")
+                Text("Welcome to YC Cast")
                     .font(.system(size: 26, weight: .bold))
 
                 Text("A few permissions are needed to get started")
@@ -471,7 +471,7 @@ struct OnboardingView: View {
             icon: "record.circle",
             iconColor: .red,
             title: "Screen Recording",
-            description: "BetterCast needs Screen Recording permission to capture your display and stream it to receivers.",
+            description: "YC Cast needs Screen Recording permission to capture your display and stream it to receivers.",
             isGranted: screenRecordingGranted,
             actionTitle: "Open Screen Recording Settings",
             action: {
@@ -492,7 +492,7 @@ struct OnboardingView: View {
             icon: "hand.point.up.left",
             iconColor: .blue,
             title: "Accessibility",
-            description: "Accessibility permission lets BetterCast relay mouse and keyboard input from your receivers back to this Mac.",
+            description: "Accessibility permission lets YC Cast relay mouse and keyboard input from your receivers back to this Mac.",
             isGranted: accessibilityGranted,
             actionTitle: "Open Accessibility Settings",
             action: {
@@ -765,7 +765,7 @@ struct SidebarView: View {
                     .tourAnchor("sidebar_logs")
             }
         }
-        .navigationTitle("BetterCast")
+        .navigationTitle("YC Cast")
         .listStyle(.sidebar)
         .safeAreaInset(edge: .bottom) {
             HStack {
@@ -777,7 +777,7 @@ struct SidebarView: View {
                         .font(.system(size: 11))
                 }
                 .buttonStyle(.borderless)
-                .help("Quit BetterCast")
+                .help("Quit YC Cast")
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
@@ -1085,7 +1085,7 @@ struct DetailPanelView: View {
                         Text("Extended Display").tag(true)
                         Text("Mirror Built-in").tag(false)
                     }
-                    InfoTip(text: "Extended creates a separate BetterCast display. Mirror sends the Mac's built-in screen instead.")
+                    InfoTip(text: "Extended creates a separate YC Cast display. Mirror sends the Mac's built-in screen instead.")
                 }
 
                 HStack {
@@ -1096,6 +1096,16 @@ struct DetailPanelView: View {
                     }
                     .disabled(!client.useVirtualDisplay)
                     InfoTip(text: "Best Fit is the default iPad mode: 1344 x 934 logical size with HiDPI backing and native capture.")
+                }
+
+                HStack {
+                    Picker("Position", selection: $client.displayPlacement) {
+                        ForEach(VirtualDisplayManager.DisplayPlacement.allCases) { placement in
+                            Text(placement.title).tag(placement)
+                        }
+                    }
+                    .disabled(!client.useVirtualDisplay)
+                    InfoTip(text: "Applies to the next extended display connection. Right is the default.")
                 }
 
                 HStack {
@@ -1255,7 +1265,7 @@ struct DetailPanelView: View {
             // About & Changelog
             Section("About") {
                 LabeledContent("Build") {
-                    Text("Private BetterCast \(UpdateChecker.currentVersion)")
+                    Text("YC Cast \(UpdateChecker.currentVersion)")
                         .foregroundStyle(.secondary)
                 }
 
@@ -2285,6 +2295,8 @@ private enum PairingTransportError: LocalizedError {
 }
 
 class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegate {
+    private static let displayPlacementDefaultsKey = "displayPlacement"
+
     private var browser: NWBrowser?
     private var pipelines: [UUID: ConnectionPipeline] = [:]
     private let pairingSecretStore: PairingSecretStoring = KeychainPairingSecretStore()
@@ -2336,6 +2348,11 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
     // Settings
     @Published var selectedResolution: VirtualDisplayManager.Resolution = VirtualDisplayManager.receiverBestFitResolution
     @Published var isRetina: Bool = false
+    @Published var displayPlacement: VirtualDisplayManager.DisplayPlacement = .right {
+        didSet {
+            UserDefaults.standard.set(displayPlacement.rawValue, forKey: Self.displayPlacementDefaultsKey)
+        }
+    }
     @Published var connectionType: String = "TCP" {
         didSet {
             if connectionType != "TCP" {
@@ -2443,6 +2460,8 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
     init() {
         LogManager.shared.log("Sender: App Starting")
         refreshPairingState()
+        displayPlacement = UserDefaults.standard.string(forKey: Self.displayPlacementDefaultsKey)
+            .flatMap(VirtualDisplayManager.DisplayPlacement.init(rawValue:)) ?? .right
         
         // We can't monitor recursively in init easily, but we can start it.
         interfaceMonitor.pathUpdateHandler = { [weak self] path in
@@ -3730,6 +3749,14 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         if useVirtualDisplay {
             LogManager.shared.log("Sender: Creating virtual display for \(serviceName)...")
             let displayManager = VirtualDisplayManager()
+            displayManager.onDisplayBoundsChanged = { [weak self] bounds in
+                DispatchQueue.main.async {
+                    guard let self, self.pipelines[connectionId] != nil else { return }
+                    InputHandler.shared.updateDisplayBounds(bounds: bounds, for: connectionId)
+                    LogManager.shared.log("Sender: Updated display placement for \(serviceName): \(bounds)")
+                    self.updateConnectedDisplays()
+                }
+            }
 
             // Use receiver-reported aspect ratio, but expose a smaller HiDPI logical mode.
             let res: (width: Int, height: Int, ppi: Int)
@@ -3745,10 +3772,10 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
                 height: res.height,
                 ppi: shouldUseHiDPI ? min(220, res.ppi * 2) : res.ppi,
                 hiDPI: shouldUseHiDPI,
-                name: "BetterCast Display (\(serviceName))"
+                name: "YC Cast Display (\(serviceName))"
             )
 
-            if let displayID = displayManager.createDisplay(resolution: resolution) {
+            if let displayID = displayManager.createDisplay(resolution: resolution, placement: displayPlacement) {
                 targetDisplayID = displayID
                 pipelines[connectionId]?.virtualDisplayManager = displayManager
 

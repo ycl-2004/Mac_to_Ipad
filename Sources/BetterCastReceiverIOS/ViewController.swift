@@ -15,6 +15,7 @@ class ViewController: UIViewController, NetworkListenerDelegate, InputDelegate {
     private var onboardingView: UIView!
     private var statusLabel: UILabel!
     private var pulseView: UIView!
+    private var disconnectedNoticeView: UIView!
     private var deviceNameField: UITextField!
     private var pairingCodeField: UITextField!
     private var isConnected = false
@@ -32,6 +33,7 @@ class ViewController: UIViewController, NetworkListenerDelegate, InputDelegate {
 
         // 2. Setup Onboarding Screen
         setupOnboarding()
+        setupDisconnectedNotice()
 
         // 3. Setup Settings Button & Overlay
         setupSettingsButton()
@@ -115,7 +117,7 @@ class ViewController: UIViewController, NetworkListenerDelegate, InputDelegate {
 
         // Title
         let titleLabel = UILabel()
-        titleLabel.text = "BetterCast"
+        titleLabel.text = "YC Cast"
         titleLabel.textColor = .white
         titleLabel.font = .systemFont(ofSize: 32, weight: .bold)
         titleLabel.textAlignment = .center
@@ -207,14 +209,14 @@ class ViewController: UIViewController, NetworkListenerDelegate, InputDelegate {
             .paragraphStyle: paragraphStyle
         ]
 
-        instructions.append(NSAttributedString(string: "1. Install BetterCast Sender\n", attributes: stepAttrs))
+        instructions.append(NSAttributedString(string: "1. Install YC Cast on Mac\n", attributes: stepAttrs))
         instructions.append(NSAttributedString(string: "Build and run the private Mac sender from this source tree to extend your display to this device.\n\n", attributes: bodyAttrs))
 
         instructions.append(NSAttributedString(string: "2. Connect to the same network\n", attributes: stepAttrs))
         instructions.append(NSAttributedString(string: "Make sure this device and your Mac are on the same Wi-Fi network.\n\n", attributes: bodyAttrs))
 
         instructions.append(NSAttributedString(string: "3. Start streaming\n", attributes: stepAttrs))
-        instructions.append(NSAttributedString(string: "Open BetterCast Sender and select this device. Your Mac display will appear here.", attributes: bodyAttrs))
+        instructions.append(NSAttributedString(string: "Open YC Cast on your Mac and select this device. Your Mac display will appear here.", attributes: bodyAttrs))
 
         instructionsLabel.attributedText = instructions
 
@@ -404,6 +406,84 @@ class ViewController: UIViewController, NetworkListenerDelegate, InputDelegate {
             self.onboardingView.alpha = 0
         } completion: { _ in
             self.onboardingView.isHidden = true
+        }
+    }
+
+    private func setupDisconnectedNotice() {
+        disconnectedNoticeView = UIView()
+        disconnectedNoticeView.backgroundColor = UIColor.black.withAlphaComponent(0.78)
+        disconnectedNoticeView.layer.cornerRadius = 18
+        disconnectedNoticeView.layer.borderWidth = 1
+        disconnectedNoticeView.layer.borderColor = UIColor.white.withAlphaComponent(0.16).cgColor
+        disconnectedNoticeView.alpha = 0
+        disconnectedNoticeView.isHidden = true
+        disconnectedNoticeView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(disconnectedNoticeView)
+
+        let titleLabel = UILabel()
+        titleLabel.text = "Device disconnected"
+        titleLabel.textColor = .white
+        titleLabel.textAlignment = .center
+        titleLabel.font = .systemFont(ofSize: 22, weight: .semibold)
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let subtitleLabel = UILabel()
+        subtitleLabel.text = "Waiting for sender..."
+        subtitleLabel.textColor = UIColor.white.withAlphaComponent(0.58)
+        subtitleLabel.textAlignment = .center
+        subtitleLabel.font = .systemFont(ofSize: 14, weight: .medium)
+        subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        disconnectedNoticeView.addSubview(titleLabel)
+        disconnectedNoticeView.addSubview(subtitleLabel)
+
+        NSLayoutConstraint.activate([
+            disconnectedNoticeView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            disconnectedNoticeView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            disconnectedNoticeView.widthAnchor.constraint(lessThanOrEqualToConstant: 360),
+            disconnectedNoticeView.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 24),
+            disconnectedNoticeView.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -24),
+
+            titleLabel.topAnchor.constraint(equalTo: disconnectedNoticeView.topAnchor, constant: 22),
+            titleLabel.leadingAnchor.constraint(equalTo: disconnectedNoticeView.leadingAnchor, constant: 24),
+            titleLabel.trailingAnchor.constraint(equalTo: disconnectedNoticeView.trailingAnchor, constant: -24),
+
+            subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
+            subtitleLabel.leadingAnchor.constraint(equalTo: disconnectedNoticeView.leadingAnchor, constant: 24),
+            subtitleLabel.trailingAnchor.constraint(equalTo: disconnectedNoticeView.trailingAnchor, constant: -24),
+            subtitleLabel.bottomAnchor.constraint(equalTo: disconnectedNoticeView.bottomAnchor, constant: -22),
+        ])
+    }
+
+    private func showDisconnectedState() {
+        isConnected = false
+        statusLabel.text = "Device disconnected"
+        statusLabel.textColor = UIColor.white.withAlphaComponent(0.85)
+        pulseView.layer.removeAllAnimations()
+        pulseView.alpha = 1.0
+        pulseView.backgroundColor = UIColor.systemOrange
+
+        onboardingView.isHidden = false
+        if onboardingView.alpha == 0 {
+            UIView.animate(withDuration: 0.25) {
+                self.onboardingView.alpha = 1
+            }
+        }
+
+        disconnectedNoticeView.isHidden = false
+        disconnectedNoticeView.alpha = 0
+        view.bringSubviewToFront(disconnectedNoticeView)
+        UIView.animate(withDuration: 0.2) {
+            self.disconnectedNoticeView.alpha = 1
+        }
+    }
+
+    private func hideDisconnectedNotice() {
+        guard !disconnectedNoticeView.isHidden else { return }
+        UIView.animate(withDuration: 0.16) {
+            self.disconnectedNoticeView.alpha = 0
+        } completion: { _ in
+            self.disconnectedNoticeView.isHidden = true
         }
     }
 
@@ -655,6 +735,7 @@ class ViewController: UIViewController, NetworkListenerDelegate, InputDelegate {
     
     func networkListener(_ listener: NetworkListenerIOS, didUpdateStatus status: String) {
         if status.contains("Connected") {
+            hideDisconnectedNotice()
             statusLabel.text = status
             // Stop pulse, show green dot, then dismiss onboarding
             pulseView.layer.removeAllAnimations()
@@ -666,6 +747,8 @@ class ViewController: UIViewController, NetworkListenerDelegate, InputDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                 self?.sendScreenInfo()
             }
+        } else if status == "Device disconnected" {
+            showDisconnectedState()
         } else if status.contains("Waiting") || status.contains("Ready") {
             statusLabel.text = status
             if !isConnected {

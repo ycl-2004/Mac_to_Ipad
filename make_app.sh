@@ -14,21 +14,21 @@ APPLE_ID="${APPLE_ID:-}"
 TEAM_ID="TQ8F92XYBL"
 
 echo "============================================"
-echo "  Building BetterCast $VERSION (Universal Binary)"
+echo "  Building YC Cast $VERSION (Universal Binary)"
 echo "============================================"
 swift build -c release --arch arm64 --arch x86_64
 
 # Define Paths
 BUILD_DIR=".build/apple/Products/Release"
-APP_NAME="BetterCast.app"
-DMG_NAME="BetterCast.dmg"
+APP_NAME="YC Cast.app"
+DMG_NAME="YC Cast.dmg"
 DMG_STAGING="dmg_staging"
 
 # Clean old artifacts
-rm -rf "$APP_NAME" "BetterCastSender.app" "$DMG_STAGING" "$DMG_NAME"
+rm -rf "$APP_NAME" "BetterCast.app" "PrivateBetterCast.app" "BetterCastSender.app" "$DMG_STAGING" "$DMG_NAME" "BetterCast.dmg"
 
 # ============================================
-# BetterCast App (unified sender + receiver)
+# YC Cast App (unified sender + receiver)
 # ============================================
 echo "Creating $APP_NAME..."
 mkdir -p "$APP_NAME/Contents/MacOS"
@@ -52,7 +52,7 @@ cp -R "$APP_NAME" "$DMG_STAGING/"
 ln -s /Applications "$DMG_STAGING/Applications"
 
 # Create DMG from staging folder
-hdiutil create -volname "BetterCast" \
+hdiutil create -volname "YC Cast" \
     -srcfolder "$DMG_STAGING" \
     -ov -format UDZO \
     "$DMG_NAME"
@@ -92,6 +92,6 @@ echo "DMG:"
 echo "  - $DMG_NAME"
 echo ""
 echo "Installation:"
-echo "  1. Open the DMG and drag BetterCast to Applications"
+echo "  1. Open the DMG and drag YC Cast to Applications"
 echo "  2. Grant Screen Recording permission when prompted"
 echo "  3. Grant Accessibility permission when prompted"

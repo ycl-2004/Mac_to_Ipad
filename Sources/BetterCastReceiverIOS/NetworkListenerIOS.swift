@@ -284,11 +284,19 @@ class NetworkListenerIOS {
     }
     
     private func removeConnection(_ connection: NWConnection) {
+        let wasConnected = connectedClients.contains { $0 === connection }
         if let index = connectedClients.firstIndex(where: { $0 === connection }) {
             connectedClients.remove(at: index)
         }
         connectionFormat.removeValue(forKey: ObjectIdentifier(connection))
         connectionSessionKeys.removeValue(forKey: ObjectIdentifier(connection))
+
+        if wasConnected && connectedClients.isEmpty {
+            audioPlayer?.stop()
+            DispatchQueue.main.async {
+                self.delegate?.networkListener(self, didUpdateStatus: "Device disconnected")
+            }
+        }
     }
 
     private func loadPairingSecret() -> Data? {
@@ -445,6 +453,7 @@ class NetworkListenerIOS {
         connection.receive(minimumIncompleteLength: 4, maximumLength: 4) { [weak self] content, contentContext, isComplete, error in
             if let error = error {
                 LogManager.shared.log("ReceiverIOS (TCP): Error \(error)")
+                self?.removeConnection(connection)
                 return
             }
 
@@ -453,13 +462,25 @@ class NetworkListenerIOS {
                 let bodyLength = Int(length)
 
                 connection.receive(minimumIncompleteLength: bodyLength, maximumLength: bodyLength) { body, bodyContext, isComplete, error in
+                    if let error = error {
+                        LogManager.shared.log("ReceiverIOS (TCP): Body error \(error)")
+                        self?.removeConnection(connection)
+                        return
+                    }
+
                     if let body = body, !body.isEmpty {
                         self?.handleReceivedBody(body, connection: connection)
+                        self?.receiveTCP(on: connection)
+                    } else if isComplete {
+                        self?.removeConnection(connection)
+                    } else {
+                        self?.receiveTCP(on: connection)
                     }
-                    self?.receiveTCP(on: connection)
                 }
+            } else if isComplete {
+                self?.removeConnection(connection)
             } else {
-                 self?.receiveTCP(on: connection)
+                self?.receiveTCP(on: connection)
             }
         }
     }

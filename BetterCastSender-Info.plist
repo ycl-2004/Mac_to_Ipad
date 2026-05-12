@@ -8,10 +8,12 @@
     <string>BetterCastSender</string>
     <key>CFBundleIdentifier</key>
     <string>com.bettercast.sender</string>
+    <key>CFBundleDisplayName</key>
+    <string>YC Cast</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>BetterCast</string>
+    <string>YC Cast</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundlePackageType</key>
@@ -25,8 +27,8 @@
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSScreenCaptureUsageDescription</key>
-    <string>BetterCast needs to capture your screen to stream it to the receiver.</string>
+    <string>YC Cast needs to capture your screen to stream it to the receiver.</string>
     <key>NSMicrophoneUsageDescription</key>
-    <string>BetterCast needs access to audio for system sound capture (if enabled).</string>
+    <string>YC Cast needs access to audio for system sound capture (if enabled).</string>
 </dict>
 </plist>
