@@ -15,14 +15,19 @@ class AudioPlayerIOS {
     fileprivate let outputChannels: UInt32 = 2
 
     private var outputFormat: AVAudioFormat?
-    private var started = false
+    private var engineStarted = false
+    private var playerStarted = false
     private var decodeCount = 0
+    private var droppedCount = 0
+    private let queue = DispatchQueue(label: "com.bettercast.audio-player", qos: .userInteractive)
 
-    // Low-latency buffer management
+    // Jitter buffer management
     // At 48kHz with 1024-frame AAC packets, each buffer is ~21ms.
-    // Cap at 3 buffers (~63ms) to keep latency tight.
+    // Start after ~64ms and cap around ~213ms. This trades a small latency bump
+    // for much better continuity when video packets briefly block the TCP stream.
     private var pendingBuffers: Int = 0
-    private let maxPendingBuffers: Int = 3
+    private let startPendingBuffers: Int = 3
+    private let maxPendingBuffers: Int = 10
 
     // Shared state for the converter input callback
     fileprivate var currentPacketData: Data?
@@ -58,9 +63,9 @@ class AudioPlayerIOS {
         outputFormat = format
         engine.connect(player, to: engine.mainMixerNode, format: format)
 
-        // Minimize output buffer for lower latency
+        // Keep the hardware buffer low; continuity is handled by our packet jitter buffer.
         let session = AVAudioSession.sharedInstance()
-        try? session.setPreferredIOBufferDuration(0.005) // 5ms buffer
+        try? session.setPreferredIOBufferDuration(BCConstants.audioIOBufferDuration)
 
         self.audioEngine = engine
         self.playerNode = player
@@ -103,35 +108,51 @@ class AudioPlayerIOS {
         }
 
         audioConverter = converter
-        LogManager.shared.log("AudioPlayer: AAC decoder ready (48kHz stereo, max \(maxPendingBuffers) buffers)")
+        LogManager.shared.log("AudioPlayer: AAC decoder ready (48kHz stereo, start \(startPendingBuffers), max \(maxPendingBuffers) buffers)")
     }
 
-    private func startIfNeeded() {
-        guard !started, let engine = audioEngine, let player = playerNode else { return }
+    private func startEngineIfNeeded() {
+        guard !engineStarted, let engine = audioEngine else { return }
         do {
             try engine.start()
-            player.play()
-            started = true
+            engineStarted = true
             LogManager.shared.log("AudioPlayer: Engine started")
         } catch {
             LogManager.shared.log("AudioPlayer: Engine start failed: \(error)")
         }
     }
 
+    private func startPlaybackIfReady() {
+        guard !playerStarted, pendingBuffers >= startPendingBuffers, let player = playerNode else { return }
+        player.play()
+        playerStarted = true
+        LogManager.shared.log("AudioPlayer: Playback started with \(pendingBuffers) buffered packets")
+    }
+
     // MARK: - Public API
 
     func decode(aacData: Data) {
+        queue.async { [weak self] in
+            self?.decodeOnQueue(aacData: aacData)
+        }
+    }
+
+    private func decodeOnQueue(aacData: Data) {
         // Skip tiny silence frames (< 10 bytes)
         guard aacData.count >= 10 else { return }
 
         setupConverter()
-        startIfNeeded()
+        startEngineIfNeeded()
 
         guard let converter = audioConverter,
               let format = outputFormat else { return }
 
         // Drop frames if too many buffers are queued (prevents latency buildup)
         if pendingBuffers >= maxPendingBuffers {
+            droppedCount += 1
+            if droppedCount % 50 == 1 {
+                LogManager.shared.log("AudioPlayer: Dropping audio packet to cap latency (pending: \(pendingBuffers), dropped: \(droppedCount))")
+            }
             return
         }
 
@@ -162,8 +183,11 @@ class AudioPlayerIOS {
             pcmBuffer.frameLength = outputDataPacketSize
             pendingBuffers += 1
             playerNode?.scheduleBuffer(pcmBuffer) { [weak self] in
-                self?.pendingBuffers -= 1
+                self?.queue.async {
+                    self?.pendingBuffers = max((self?.pendingBuffers ?? 1) - 1, 0)
+                }
             }
+            startPlaybackIfReady()
 
             decodeCount += 1
             if decodeCount % 100 == 1 {
@@ -178,10 +202,15 @@ class AudioPlayerIOS {
     }
 
     func stop() {
-        playerNode?.stop()
-        audioEngine?.stop()
-        started = false
-        pendingBuffers = 0
+        queue.sync {
+            playerNode?.stop()
+            audioEngine?.stop()
+            engineStarted = false
+            playerStarted = false
+            pendingBuffers = 0
+            currentPacketData = nil
+            currentPacketConsumed = false
+        }
     }
 }
 

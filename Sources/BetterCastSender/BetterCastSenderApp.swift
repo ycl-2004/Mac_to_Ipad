@@ -2474,7 +2474,7 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
     @Published var selectedQuality: StreamQuality = .high
     
     // Private build uses Apple peer-to-peer/AWDL first.
-    @Published var interfacePreference: NetworkInterfacePreference = .p2pOnly
+    @Published var interfacePreference: NetworkInterfacePreference = .auto
 
     // Auto-connect: automatically connect to discovered receivers
     @Published var autoConnect: Bool = false
@@ -3018,25 +3018,33 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
                     parameters.requiredInterface = awdl
                     LogManager.shared.log("Sender: Apple receiver — using P2P endpoint + AWDL (\(awdl.name)) for \(service.name)")
                 } else {
-                    if let infra = cachedInfraInterface {
+                    if interfacePreference == .p2pOnly, let infra = cachedInfraInterface {
                         LogManager.shared.log("Sender: Apple receiver — using P2P endpoint, banning infra for \(service.name)")
                         parameters.prohibitedInterfaces = [infra]
+                        parameters.prohibitedInterfaceTypes = [.loopback, .wiredEthernet]
+                        parameters.serviceClass = .interactiveVideo
+                    } else {
+                        configureParameters(parameters)
+                        LogManager.shared.log("Sender: Apple receiver — P2P endpoint found but AWDL unavailable; using Auto fallback for \(service.name)")
                     }
-                    parameters.prohibitedInterfaceTypes = [.loopback, .wiredEthernet]
-                    parameters.serviceClass = .interactiveVideo
                 }
             } else {
-                // No separate P2P endpoint — force AWDL by banning infrastructure.
-                // The 5-second timeout will fall back to infra if AWDL can't be established.
+                // No separate P2P endpoint. Auto can use normal Wi-Fi; Force P2P still
+                // bans infrastructure so failures are obvious instead of silently routing.
                 parameters.includePeerToPeer = true
                 parameters.serviceClass = .interactiveVideo
                 if let awdl = cachedAWDLInterface {
                     parameters.requiredInterface = awdl
                     LogManager.shared.log("Sender: Apple receiver — requiring AWDL (\(awdl.name)) for \(service.name)")
                 } else if let infra = cachedInfraInterface {
-                    parameters.prohibitedInterfaces = [infra]
-                    parameters.prohibitedInterfaceTypes = [.loopback, .wiredEthernet]
-                    LogManager.shared.log("Sender: Apple receiver — banning infra, forcing P2P for \(service.name)")
+                    if interfacePreference == .p2pOnly {
+                        parameters.prohibitedInterfaces = [infra]
+                        parameters.prohibitedInterfaceTypes = [.loopback, .wiredEthernet]
+                        LogManager.shared.log("Sender: Apple receiver — banning infra, forcing P2P for \(service.name)")
+                    } else {
+                        configureParameters(parameters)
+                        LogManager.shared.log("Sender: Apple receiver — AWDL unavailable; using Auto fallback for \(service.name)")
+                    }
                 } else {
                     LogManager.shared.log("Sender: Apple receiver — enabling P2P discovery for \(service.name)")
                 }
@@ -3670,10 +3678,13 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         // 1. Stop all pipeline components
         for (id, pipeline) in pipelines {
             pipeline.screenRecorder?.stopCapture()
+            pipeline.processAudioCapture?.stop()
             pipeline.virtualDisplayManager?.destroyDisplay()
             InputHandler.shared.removeDisplayBounds(for: id)
             pipelines[id]?.screenRecorder = nil
             pipelines[id]?.videoEncoder = nil
+            pipelines[id]?.audioEncoder = nil
+            pipelines[id]?.processAudioCapture = nil
             pipelines[id]?.virtualDisplayManager = nil
         }
 
