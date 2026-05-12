@@ -3,6 +3,7 @@ import ScreenCaptureKit
 import CoreMedia
 
 protocol ScreenRecorderDelegate: AnyObject {
+    func screenRecorderDidFailToStart(_ recorder: ScreenRecorder, reason: String)
     func screenRecorderDidStopUnexpectedly(_ recorder: ScreenRecorder)
 }
 
@@ -46,7 +47,10 @@ class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
                 }
                 
                 if display == nil {
-                    LogManager.shared.log("ScreenRecorder: Target display \(targetID) NOT found after retries. Falling back to Main.")
+                    let reason = "Target display \(targetID) was not available to ScreenCaptureKit"
+                    LogManager.shared.log("ScreenRecorder: \(reason). Not falling back to the main display.")
+                    delegate?.screenRecorderDidFailToStart(self, reason: reason)
+                    return
                 }
             }
             
@@ -92,6 +96,7 @@ class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
             if let scError = error as? SCStreamError, scError.code == .userDeclined {
                  LogManager.shared.log("ScreenRecorder: PERMISSION DENIED. Go to System Settings > Privacy > Screen Recording")
             }
+            delegate?.screenRecorderDidFailToStart(self, reason: error.localizedDescription)
         }
     }
     

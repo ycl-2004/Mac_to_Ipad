@@ -3980,7 +3980,10 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
                 LogManager.shared.log("Sender: Virtual display created for \(serviceName) with ID \(displayID)")
                 LogManager.shared.log("Sender: Go to System Settings > Displays to arrange it")
             } else {
-                LogManager.shared.log("Sender: Failed to create virtual display for \(serviceName), using main screen")
+                status = "Virtual display unavailable"
+                LogManager.shared.log("Sender: Failed to create virtual display for \(serviceName); refusing to mirror the main screen in Extended Display mode")
+                removeConnection(connectionId)
+                return
             }
         } else {
             LogManager.shared.log("Sender: Using main screen (mirroring mode) for \(serviceName)")
@@ -4069,6 +4072,15 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
 
         Task {
             await recorder.startCapture()
+        }
+    }
+
+    func screenRecorderDidFailToStart(_ recorder: ScreenRecorder, reason: String) {
+        guard let entry = pipelines.first(where: { $0.value.screenRecorder === recorder }) else { return }
+        LogManager.shared.log("Sender: Screen capture did not start for \(entry.value.service.name): \(reason)")
+        DispatchQueue.main.async {
+            self.status = "Virtual display capture unavailable"
+            self.removeConnection(entry.key)
         }
     }
 
