@@ -20,6 +20,7 @@ xcuserdata/
 *.apk
 *.ipa
 ios_packaging/
+/dist/
 
 # iOS build output
 build_ios/

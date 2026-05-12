@@ -1459,7 +1459,7 @@ struct DetailPanelView: View {
 
 // MARK: - Display Overview (arrangement view)
 
-/// A display item in the arrangement view — either the built-in display or a BetterCast virtual display.
+/// A display item in the arrangement view — either the built-in display or a YC Cast virtual display.
 struct DisplayItem: Identifiable {
     let id: String
     let name: String
@@ -1551,7 +1551,7 @@ struct DisplayOverviewView: View {
             ))
         }
 
-        // Connected BetterCast displays
+        // Connected YC Cast displays
         for display in client.connectedDisplays {
             let b = display.displayBounds
             let w = b.width > 0 ? b.width : 1920
@@ -3558,7 +3558,7 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         // Reset Screen Recording
         let screenCapture = Process()
         screenCapture.executableURL = URL(fileURLWithPath: BCConstants.tccutilPath)
-        screenCapture.arguments = ["reset", "ScreenCapture", "com.bettercast.sender"]
+        screenCapture.arguments = ["reset", "ScreenCapture", PrivateBetterCastConstants.senderBundleID]
         do {
             try screenCapture.run()
             screenCapture.waitUntilExit()
@@ -3576,7 +3576,7 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         // Reset Accessibility (for mouse/keyboard control)
         let accessibility = Process()
         accessibility.executableURL = URL(fileURLWithPath: BCConstants.tccutilPath)
-        accessibility.arguments = ["reset", "Accessibility", "com.bettercast.sender"]
+        accessibility.arguments = ["reset", "Accessibility", PrivateBetterCastConstants.senderBundleID]
         do {
             try accessibility.run()
             accessibility.waitUntilExit()

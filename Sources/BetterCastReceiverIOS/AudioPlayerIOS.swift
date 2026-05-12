@@ -4,7 +4,7 @@ import AVFoundation
 import AudioToolbox
 
 /// Decodes raw AAC-LC frames and plays them via AVAudioEngine.
-/// Expects raw AAC packets (no ADTS headers) as produced by BetterCast's AudioEncoder.
+/// Expects raw AAC packets (no ADTS headers) as produced by the Mac audio encoder.
 class AudioPlayerIOS {
 
     private var audioEngine: AVAudioEngine?

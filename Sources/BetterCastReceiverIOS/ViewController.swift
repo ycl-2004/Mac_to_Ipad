@@ -154,7 +154,7 @@ class ViewController: UIViewController, NetworkListenerDelegate, InputDelegate {
         deviceNameField.rightViewMode = .always
         deviceNameField.returnKeyType = .done
         deviceNameField.attributedPlaceholder = NSAttributedString(
-            string: "e.g. Stephen's iPhone",
+            string: "e.g. My iPad",
             attributes: [.foregroundColor: UIColor.white.withAlphaComponent(0.25)]
         )
         deviceNameField.addTarget(self, action: #selector(deviceNameChanged), for: .editingDidEnd)

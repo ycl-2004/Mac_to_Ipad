@@ -5,13 +5,14 @@ set -e
 
 VERSION="v8"
 
-# Code signing identity (Developer ID Application certificate)
-# Set to "-" for ad-hoc signing (local use), or your Developer ID for distribution
-SIGN_IDENTITY="${SIGN_IDENTITY:-Developer ID Application: STEPHEN JAN LOVINO (TQ8F92XYBL)}"
+# Code signing identity. Defaults to ad-hoc signing for local builds.
+# Set this to your Developer ID Application certificate for distribution.
+SIGN_IDENTITY="${SIGN_IDENTITY:--}"
 
-# Apple ID for notarization (set via environment or here)
+# Apple notarization settings. Leave empty for local ad-hoc builds.
 APPLE_ID="${APPLE_ID:-}"
-TEAM_ID="TQ8F92XYBL"
+APP_PASSWORD="${APP_PASSWORD:-}"
+TEAM_ID="${TEAM_ID:-}"
 
 echo "============================================"
 echo "  Building YC Cast $VERSION (Universal Binary)"
@@ -33,7 +34,7 @@ rm -rf "$APP_NAME" "BetterCast.app" "PrivateBetterCast.app" "BetterCastSender.ap
 echo "Creating $APP_NAME..."
 mkdir -p "$APP_NAME/Contents/MacOS"
 mkdir -p "$APP_NAME/Contents/Resources"
-# Binary is still named BetterCastSender from the Swift package target
+# The executable name follows the current Swift package target.
 cp "$BUILD_DIR/BetterCastSender" "$APP_NAME/Contents/MacOS/BetterCastSender"
 cp "BetterCastSender-Info.plist" "$APP_NAME/Contents/Info.plist"
 cp "assets/branding/BetterCastIcon.icns" "$APP_NAME/Contents/Resources/AppIcon.icns"
@@ -67,7 +68,7 @@ codesign --force --sign "$SIGN_IDENTITY" "$DMG_NAME"
 # ============================================
 # Notarize DMG (if Apple ID is set)
 # ============================================
-if [ -n "$APPLE_ID" ]; then
+if [ -n "$APPLE_ID" ] && [ -n "$APP_PASSWORD" ] && [ -n "$TEAM_ID" ]; then
     echo "Notarizing DMG..."
     xcrun notarytool submit "$DMG_NAME" \
         --apple-id "$APPLE_ID" \
@@ -79,7 +80,7 @@ if [ -n "$APPLE_ID" ]; then
     xcrun stapler staple "$DMG_NAME"
 else
     echo ""
-    echo "Skipping notarization (set APPLE_ID and APP_PASSWORD to enable)"
+    echo "Skipping notarization (set APPLE_ID, APP_PASSWORD, and TEAM_ID to enable)"
 fi
 
 echo ""

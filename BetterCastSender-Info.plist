@@ -7,7 +7,7 @@
     <key>CFBundleExecutable</key>
     <string>BetterCastSender</string>
     <key>CFBundleIdentifier</key>
-    <string>com.bettercast.sender</string>
+    <string>com.yichen.yccast.sender</string>
     <key>CFBundleDisplayName</key>
     <string>YC Cast</string>
     <key>CFBundleInfoDictionaryVersion</key>
