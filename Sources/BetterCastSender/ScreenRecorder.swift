@@ -78,6 +78,8 @@ class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
             config.minimumFrameInterval = CMTime(value: 1, timescale: captureFPS)
             config.queueDepth = captureFPS > 60 ? 8 : 4
             config.capturesAudio = captureAudio
+            config.sampleRate = Int(BCConstants.audioSampleRate)
+            config.channelCount = Int(BCConstants.audioChannels)
 
             let stream = SCStream(filter: filter, configuration: config, delegate: self)
             try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: .global(qos: .userInitiated))

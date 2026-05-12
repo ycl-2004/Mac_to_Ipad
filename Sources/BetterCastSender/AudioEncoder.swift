@@ -35,12 +35,6 @@ class AudioEncoder {
             setupConverter(sourceFormat: srcFormat)
         }
 
-        guard let converter = converter else { return }
-
-        let channels = min(Int(srcFormat.mChannelsPerFrame), 2)
-        let isNonInterleaved = (srcFormat.mFormatFlags & kAudioFormatFlagIsNonInterleaved) != 0
-        let bytesPerSample = Int(srcFormat.mBitsPerChannel / 8)
-
         // Get the required AudioBufferList size (may need multiple buffers for non-interleaved)
         var ablSize: Int = 0
         CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
@@ -74,7 +68,23 @@ class AudioEncoder {
 
         guard status == noErr else { return }
 
-        let abl = UnsafeMutableAudioBufferListPointer(ablPtr)
+        encode(audioBufferList: UnsafePointer(ablPtr), sourceFormat: srcFormat)
+    }
+
+    func encode(audioBufferList: UnsafePointer<AudioBufferList>, sourceFormat srcFormat: AudioStreamBasicDescription) {
+        // Initialize converter on first audio frame
+        if converter == nil {
+            setupConverter(sourceFormat: srcFormat)
+        }
+
+        guard let converter = converter else { return }
+
+        let channels = min(Int(srcFormat.mChannelsPerFrame), 2)
+        let isNonInterleaved = (srcFormat.mFormatFlags & kAudioFormatFlagIsNonInterleaved) != 0
+        let bytesPerSample = Int(srcFormat.mBitsPerChannel / 8)
+        guard channels > 0, bytesPerSample > 0 else { return }
+
+        let abl = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: audioBufferList))
 
         if isNonInterleaved && channels == 2 && abl.count >= 2 {
             // Non-interleaved: each buffer is one channel's float samples
@@ -100,6 +110,7 @@ class AudioEncoder {
             pcmAccumulator.append(interleaved)
         } else {
             // Interleaved or mono — use first buffer directly
+            guard abl.count > 0 else { return }
             let buf = abl[0]
             if let data = buf.mData {
                 pcmAccumulator.append(Data(bytes: data, count: Int(buf.mDataByteSize)))
@@ -218,7 +229,7 @@ class AudioEncoder {
         )
 
         var dst = AudioStreamBasicDescription(
-            mSampleRate: sourceFormat.mSampleRate,
+            mSampleRate: BCConstants.audioSampleRate,
             mFormatID: kAudioFormatMPEG4AAC,
             mFormatFlags: 0,
             mBytesPerPacket: 0,
@@ -243,7 +254,7 @@ class AudioEncoder {
         outputFormat = dst
 
         let isNonInterleaved = (sourceFormat.mFormatFlags & kAudioFormatFlagIsNonInterleaved) != 0
-        LogManager.shared.log("AudioEncoder: Initialized (\(Int(sourceFormat.mSampleRate))Hz, \(channels)ch, nonInterleaved=\(isNonInterleaved) → AAC 128kbps)")
+        LogManager.shared.log("AudioEncoder: Initialized (\(Int(sourceFormat.mSampleRate))Hz, \(channels)ch, nonInterleaved=\(isNonInterleaved) → AAC \(Int(BCConstants.audioSampleRate))Hz 128kbps)")
     }
 
     deinit {

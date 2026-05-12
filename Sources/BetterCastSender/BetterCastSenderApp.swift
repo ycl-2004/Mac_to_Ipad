@@ -1155,8 +1155,8 @@ struct DetailPanelView: View {
                 }
 
                 HStack {
-                    Toggle("Audio Streaming", isOn: $client.audioStreamingEnabled)
-                    InfoTip(text: "Sends Mac system audio with the video stream. Leave it off when you only need the iPad as a silent display.")
+                    Toggle("Chrome Audio to iPad", isOn: $client.audioStreamingEnabled)
+                    InfoTip(text: "Sends Chrome audio to the receiver and mutes Chrome on this Mac when supported.")
                 }
 
                 HStack {
@@ -1951,11 +1951,11 @@ struct DeviceDetailView: View {
                 }
 
                 HStack {
-                    Toggle("Audio Streaming", isOn: Binding(
+                    Toggle("Chrome Audio to iPad", isOn: Binding(
                         get: { display.audioEnabled },
                         set: { client.setAudioEnabled($0, for: display.id) }
                     ))
-                    InfoTip(text: "Sends Mac system audio to this receiver together with the screen stream.")
+                    InfoTip(text: "Sends Chrome audio to this receiver and mutes Chrome on this Mac when supported.")
                 }
 
                 HStack {
@@ -2140,8 +2140,8 @@ struct DiscoveredDeviceView: View {
                 }
 
                 HStack {
-                    Toggle("Audio Streaming", isOn: $client.audioStreamingEnabled)
-                    InfoTip(text: "Sends Mac system audio to the receiver with the video stream.")
+                    Toggle("Chrome Audio to iPad", isOn: $client.audioStreamingEnabled)
+                    InfoTip(text: "Sends Chrome audio to the receiver and mutes Chrome on this Mac when supported.")
                 }
 
                 HStack {
@@ -2335,6 +2335,7 @@ struct ConnectionPipeline {
     var screenRecorder: ScreenRecorder?
     var videoEncoder: VideoEncoder?
     var audioEncoder: AudioEncoder?
+    var processAudioCapture: ProcessAudioTapCapture?
 
     // Adaptive: P2P (AWDL) connections get full quality; infrastructure gets throttled
     var isP2P: Bool = false
@@ -3713,6 +3714,7 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
 
         // Tear down this connection's pipeline
         pipeline.screenRecorder?.stopCapture()
+        pipeline.processAudioCapture?.stop()
         pipeline.virtualDisplayManager?.destroyDisplay()
         let didSendDisconnectNotice = sendDisconnectNotice(for: pipeline)
         if didSendDisconnectNotice {
@@ -3762,6 +3764,7 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
     func disconnect() {
         for (id, pipeline) in pipelines {
             pipeline.screenRecorder?.stopCapture()
+            pipeline.processAudioCapture?.stop()
             pipeline.virtualDisplayManager?.destroyDisplay()
             pipeline.connection.cancel()
             InputHandler.shared.removeDisplayBounds(for: id)
@@ -3930,6 +3933,8 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         pipelines[connectionId]?.screenRecorder?.stopCapture()
         pipelines[connectionId]?.screenRecorder = nil
         pipelines[connectionId]?.videoEncoder = nil
+        pipelines[connectionId]?.processAudioCapture?.stop()
+        pipelines[connectionId]?.processAudioCapture = nil
         pipelines[connectionId]?.audioEncoder = nil
         if let dm = pipelines[connectionId]?.virtualDisplayManager {
             dm.destroyDisplay()
@@ -4087,6 +4092,25 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
             LogManager.shared.log("Sender: Audio encoder created for \(serviceName)")
         }
 
+        var useScreenCaptureAudio = false
+        if audioEnabled, let audioEnc {
+            let processTap = ProcessAudioTapCapture(
+                bundleIDPrefixes: ["com.google.Chrome"],
+                muteProcess: true
+            ) { audioBufferList, format in
+                audioEnc.encode(audioBufferList: audioBufferList, sourceFormat: format)
+            }
+
+            do {
+                try processTap.start()
+                pipelines[connectionId]?.processAudioCapture = processTap
+                useScreenCaptureAudio = false
+                LogManager.shared.log("Sender: Chrome audio will play on receiver only for \(serviceName)")
+            } catch {
+                LogManager.shared.log("Sender: Chrome-only audio capture unavailable (\(error.localizedDescription)); audio disabled to avoid playing on this Mac")
+            }
+        }
+
         let recorder = ScreenRecorder(
             videoEncoder: encoder,
             targetDisplayID: targetDisplayID,
@@ -4095,8 +4119,8 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
             captureFPS: Int32(fps)
         )
         recorder.delegate = self
-        recorder.captureAudio = audioEnabled
-        recorder.audioEncoder = audioEnc
+        recorder.captureAudio = useScreenCaptureAudio
+        recorder.audioEncoder = useScreenCaptureAudio ? audioEnc : nil
         pipelines[connectionId]?.screenRecorder = recorder
 
         Task {

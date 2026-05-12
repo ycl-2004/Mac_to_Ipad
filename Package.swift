@@ -42,7 +42,8 @@ let package = Package(
                 .linkedFramework("VideoToolbox"),
                 .linkedFramework("Network"),
                 .linkedFramework("CoreGraphics"),
-                .linkedFramework("AVFoundation")
+                .linkedFramework("AVFoundation"),
+                .linkedFramework("CoreAudio")
             ]
         ),
         .executableTarget(
