@@ -4217,6 +4217,10 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
             }
         } else {
             LogManager.shared.log("Sender: Using main screen (mirroring mode) for \(serviceName)")
+            let mainBounds = CGDisplayBounds(CGMainDisplayID())
+            if mainBounds.width > 0 && mainBounds.height > 0 {
+                InputHandler.shared.updateDisplayBounds(bounds: mainBounds, for: connectionId)
+            }
         }
 
         // Calculate Physical Capture Resolution

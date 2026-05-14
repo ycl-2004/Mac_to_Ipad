@@ -16,7 +16,7 @@ enum InputMode {
     case cursor    // Trackpad: pan moves cursor relatively
 }
 
-class VideoRendererViewIOS: UIView, VideoRendererIOS {
+class VideoRendererViewIOS: UIView, VideoRendererIOS, UIGestureRecognizerDelegate {
 
     weak var inputDelegate: InputDelegate?
 
@@ -113,6 +113,8 @@ class VideoRendererViewIOS: UIView, VideoRendererIOS {
         // 4. Scroll (2 Finger Pan)
         let scrollPan = UIPanGestureRecognizer(target: self, action: #selector(handleScroll(_:)))
         scrollPan.minimumNumberOfTouches = 2
+        scrollPan.maximumNumberOfTouches = 2
+        scrollPan.delegate = self
         addGestureRecognizer(scrollPan)
 
         // 5. Double Tap (Double Click)
@@ -126,8 +128,21 @@ class VideoRendererViewIOS: UIView, VideoRendererIOS {
         // 6. Long Press (Click and Drag)
         let longPress = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPress(_:)))
         longPress.minimumPressDuration = 0.3
+        longPress.numberOfTouchesRequired = 1
+        longPress.delegate = self
         addGestureRecognizer(longPress)
 
+    }
+
+    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        switch gestureRecognizer {
+        case is UIPanGestureRecognizer where gestureRecognizer.numberOfTouches > 2:
+            return false
+        case is UILongPressGestureRecognizer where gestureRecognizer.numberOfTouches != 1:
+            return false
+        default:
+            return true
+        }
     }
 
     /// Toggle between aspect-fill (full screen) and aspect-fit (letterbox)
@@ -286,6 +301,11 @@ class VideoRendererViewIOS: UIView, VideoRendererIOS {
     }
     
     @objc private func handleScroll(_ gesture: UIPanGestureRecognizer) {
+        guard gesture.numberOfTouches == 2 else {
+            gesture.setTranslation(.zero, in: self)
+            return
+        }
+
         if gesture.state == .changed {
             let translation = gesture.translation(in: self)
             let dx = Double(-translation.x)
