@@ -531,7 +531,6 @@ class ViewController: UIViewController, NetworkListenerDelegate, InputDelegate {
     // MARK: - Settings Button & Overlay
 
     private var settingsButton: UIButton!
-    private var inputModeButton: UIButton!
     private var displayModeButton: UIButton!
 
     private var settingsButtonBlur: UIVisualEffectView!
@@ -595,16 +594,6 @@ class ViewController: UIViewController, NetworkListenerDelegate, InputDelegate {
         // Keep settingsOverlay pointing to the blur view for hide/show logic
         settingsOverlay = settingsOverlayBlur
 
-        // Input mode button
-        inputModeButton = UIButton(type: .system)
-        inputModeButton.setTitle("Touch Mode", for: .normal)
-        inputModeButton.setTitleColor(.white, for: .normal)
-        inputModeButton.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.5)
-        inputModeButton.layer.cornerRadius = 10
-        inputModeButton.titleLabel?.font = .systemFont(ofSize: 15, weight: .semibold)
-        inputModeButton.addTarget(self, action: #selector(toggleInputMode), for: .touchUpInside)
-        inputModeButton.translatesAutoresizingMaskIntoConstraints = false
-
         // Display mode button
         displayModeButton = UIButton(type: .system)
         updateDisplayModeButtonTitle()
@@ -642,7 +631,7 @@ class ViewController: UIViewController, NetworkListenerDelegate, InputDelegate {
         closeButton.addTarget(self, action: #selector(hideSettings), for: .touchUpInside)
         closeButton.translatesAutoresizingMaskIntoConstraints = false
 
-        let stack = UIStackView(arrangedSubviews: [inputModeButton, displayModeButton, resetPairingButton, hideButtonButton, closeButton])
+        let stack = UIStackView(arrangedSubviews: [displayModeButton, resetPairingButton, hideButtonButton, closeButton])
         stack.axis = .vertical
         stack.spacing = 10
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -658,7 +647,6 @@ class ViewController: UIViewController, NetworkListenerDelegate, InputDelegate {
             stack.leadingAnchor.constraint(equalTo: settingsOverlayBlur.contentView.leadingAnchor, constant: 20),
             stack.trailingAnchor.constraint(equalTo: settingsOverlayBlur.contentView.trailingAnchor, constant: -20),
 
-            inputModeButton.heightAnchor.constraint(equalToConstant: 44),
             displayModeButton.heightAnchor.constraint(equalToConstant: 44),
             resetPairingButton.heightAnchor.constraint(equalToConstant: 44),
             hideButtonButton.heightAnchor.constraint(equalToConstant: 44),
@@ -709,16 +697,6 @@ class ViewController: UIViewController, NetworkListenerDelegate, InputDelegate {
             self.settingsOverlay.alpha = 0
         } completion: { _ in
             self.settingsOverlay.isHidden = true
-        }
-    }
-
-    @objc private func toggleInputMode() {
-        if renderer.inputMode == .touch {
-            renderer.inputMode = .cursor
-            inputModeButton.setTitle("Cursor Mode", for: .normal)
-        } else {
-            renderer.inputMode = .touch
-            inputModeButton.setTitle("Touch Mode", for: .normal)
         }
     }
 
@@ -773,7 +751,8 @@ class ViewController: UIViewController, NetworkListenerDelegate, InputDelegate {
     // MARK: - InputDelegate
     
     func didTriggerInput(_ event: InputEvent) {
-        networkListener?.sendInputEvent(event)
+        // Display-only receiver: local iPad touches should never control the Mac.
+        // Connection commands such as screen-size updates are sent explicitly elsewhere.
     }
     
     override var prefersStatusBarHidden: Bool {

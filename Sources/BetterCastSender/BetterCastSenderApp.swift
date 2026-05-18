@@ -62,11 +62,6 @@ struct BetterCastSenderApp: App {
         .onAppear {
             networkClient.checkScreenRecordingPermission()
             networkClient.startBrowsing()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                if networkClient.iPadInputEnabled {
-                    InputHandler.shared.checkAccessibility()
-                }
-            }
             if !hasCompletedTour {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                     withAnimation { showTour = true }
@@ -365,7 +360,7 @@ struct OnboardingView: View {
     @State private var accessibilityGranted = false
     @State private var pollTimer: Timer?
 
-    private let steps = ["Screen Recording", "Accessibility", "Ready"]
+    private let steps = ["Screen Recording", "Local Control", "Ready"]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -380,7 +375,7 @@ struct OnboardingView: View {
                 Text("Welcome to YC Cast")
                     .font(.system(size: 26, weight: .bold))
 
-                Text("A few permissions are needed to get started")
+                Text("Screen capture plus local Mac control")
                     .font(.system(size: 14))
                     .foregroundStyle(.secondary)
             }
@@ -491,16 +486,13 @@ struct OnboardingView: View {
 
     private var accessibilityStep: some View {
         PermissionStepCard(
-            icon: "hand.point.up.left",
+            icon: "keyboard",
             iconColor: .blue,
-            title: "Accessibility",
-            description: "Accessibility permission lets YC Cast relay mouse and keyboard input from your receivers back to this Mac.",
-            isGranted: accessibilityGranted,
-            actionTitle: "Open Accessibility Settings",
-            action: {
-                let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-                _ = AXIsProcessTrustedWithOptions(options)
-            }
+            title: "Local Control",
+            description: "YC Cast is display-only. Keep using this Mac's keyboard, trackpad, and clipboard to control the extended display.",
+            isGranted: true,
+            actionTitle: "",
+            action: {}
         )
     }
 
@@ -517,12 +509,12 @@ struct OnboardingView: View {
 
                     VStack(alignment: .leading, spacing: 8) {
                         permissionRow("Screen Recording", granted: screenRecordingGranted)
-                        permissionRow("Accessibility", granted: accessibilityGranted)
+                        permissionRow("Local Mac control", granted: true)
                     }
                     .padding(.top, 4)
 
-                    if !screenRecordingGranted || !accessibilityGranted {
-                        Text("Some permissions are missing. You can grant them later in System Settings, but some features won't work until they're enabled.")
+                    if !screenRecordingGranted {
+                        Text("Screen Recording is still missing. You can grant it later in System Settings, but streaming cannot start until it's enabled.")
                             .font(.system(size: 12))
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
@@ -552,7 +544,7 @@ struct OnboardingView: View {
     private func stepCompleted(_ step: Int) -> Bool {
         switch step {
         case 0: return screenRecordingGranted
-        case 1: return accessibilityGranted
+        case 1: return true
         case 2: return true
         default: return false
         }
@@ -562,8 +554,7 @@ struct OnboardingView: View {
         // Screen Recording: check via CGPreflightScreenCaptureAccess (macOS 10.15+)
         screenRecordingGranted = CGPreflightScreenCaptureAccess()
 
-        // Accessibility: check without prompting
-        accessibilityGranted = AXIsProcessTrusted()
+        accessibilityGranted = true
     }
 
     private func startPolling() {
@@ -1157,11 +1148,6 @@ struct DetailPanelView: View {
                 HStack {
                     Toggle("Chrome Audio to iPad", isOn: $client.audioStreamingEnabled)
                     InfoTip(text: "Sends Chrome audio to the receiver and mutes Chrome on this Mac when supported.")
-                }
-
-                HStack {
-                    Toggle("iPad Control", isOn: $client.iPadInputEnabled)
-                    InfoTip(text: "Allows touch, scroll, mouse, and keyboard input from the iPad. Leave this off for a plain second-screen experience.")
                 }
 
                 Button("Arrange Displays") {
@@ -1958,10 +1944,6 @@ struct DeviceDetailView: View {
                     InfoTip(text: "Sends Chrome audio to this receiver and mutes Chrome on this Mac when supported.")
                 }
 
-                HStack {
-                    Toggle("iPad Control", isOn: $client.iPadInputEnabled)
-                    InfoTip(text: "When off, YC Cast ignores iPad touch, scroll, and keyboard input so Mac system gestures stay with the Mac.")
-                }
             }
 
             Section("Status") {
@@ -2144,10 +2126,6 @@ struct DiscoveredDeviceView: View {
                     InfoTip(text: "Sends Chrome audio to the receiver and mutes Chrome on this Mac when supported.")
                 }
 
-                HStack {
-                    Toggle("iPad Control", isOn: $client.iPadInputEnabled)
-                    InfoTip(text: "When off, the receiver is display-only and cannot move Mac focus to the iPad display.")
-                }
             }
         }
         .formStyle(.grouped)
@@ -2397,7 +2375,6 @@ private enum PairingTransportError: LocalizedError {
 class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegate, ScreenRecorderDelegate {
     private static let displayPlacementDefaultsKey = "displayPlacement"
     private static let hiddenDeviceKeysDefaultsKey = "hiddenDeviceKeys"
-    private static let iPadInputEnabledDefaultsKey = "iPadInputEnabled"
 
     private var browser: NWBrowser?
     private var pipelines: [UUID: ConnectionPipeline] = [:]
@@ -2417,14 +2394,7 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
             }
         }
     }
-    @Published var iPadInputEnabled: Bool = false {
-        didSet {
-            UserDefaults.standard.set(iPadInputEnabled, forKey: Self.iPadInputEnabledDefaultsKey)
-            if iPadInputEnabled {
-                InputHandler.shared.checkAccessibility()
-            }
-        }
-    }
+    @Published private(set) var iPadInputEnabled: Bool = false
     @Published var displayBrightness: Float = Float(DisplayBrightnessControl.getBrightness()) {
         didSet { DisplayBrightnessControl.setBrightness(Double(displayBrightness)) }
     }
@@ -2625,7 +2595,9 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         displayPlacement = UserDefaults.standard.string(forKey: Self.displayPlacementDefaultsKey)
             .flatMap(VirtualDisplayManager.DisplayPlacement.init(rawValue:)) ?? .right
         hiddenDeviceKeys = Set(UserDefaults.standard.stringArray(forKey: Self.hiddenDeviceKeysDefaultsKey) ?? [])
-        iPadInputEnabled = UserDefaults.standard.bool(forKey: Self.iPadInputEnabledDefaultsKey)
+        // YC Cast is display-only: all direct control stays on the Mac.
+        iPadInputEnabled = false
+        UserDefaults.standard.removeObject(forKey: "iPadInputEnabled")
         
         // We can't monitor recursively in init easily, but we can start it.
         interfaceMonitor.pathUpdateHandler = { [weak self] path in
@@ -3712,7 +3684,7 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
     }
     
     func resetScreenCapturePermissions() {
-        LogManager.shared.log("Permissions: Resetting ScreenCapture and Accessibility permissions...")
+        LogManager.shared.log("Permissions: Resetting ScreenCapture permission...")
 
         var allSuccess = true
 
@@ -3734,26 +3706,8 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
             allSuccess = false
         }
 
-        // Reset Accessibility (for mouse/keyboard control)
-        let accessibility = Process()
-        accessibility.executableURL = URL(fileURLWithPath: BCConstants.tccutilPath)
-        accessibility.arguments = ["reset", "Accessibility", PrivateBetterCastConstants.senderBundleID]
-        do {
-            try accessibility.run()
-            accessibility.waitUntilExit()
-            if accessibility.terminationStatus == 0 {
-                LogManager.shared.log("Permissions: Accessibility reset OK")
-            } else {
-                LogManager.shared.log("Permissions: Accessibility reset failed (Code \(accessibility.terminationStatus))")
-                allSuccess = false
-            }
-        } catch {
-            LogManager.shared.log("Permissions: Error resetting Accessibility - \(error)")
-            allSuccess = false
-        }
-
         if allSuccess {
-            LogManager.shared.log("Permissions: All reset! Restarting to re-prompt...")
+            LogManager.shared.log("Permissions: Screen Recording reset. Restarting to re-prompt...")
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                 self.restartApp()
             }

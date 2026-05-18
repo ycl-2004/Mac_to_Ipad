@@ -1,6 +1,6 @@
 # YC Cast
 
-YC Cast turns an iPad into an extended display for a Mac. The Mac creates a virtual display, streams it to the iPad over a local Apple device path, and can accept authenticated touch, pointer, scroll, and keyboard input from the paired iPad.
+YC Cast turns an iPad into a display-only extended screen for a Mac. The Mac creates a virtual display and streams it to the iPad over a local Apple device path, while keyboard, trackpad, mouse, clipboard, and app control stay on the Mac.
 
 The current product path is a macOS sender plus an iPadOS receiver.
 
@@ -13,7 +13,7 @@ The current product path is a macOS sender plus an iPadOS receiver.
 - Adaptive stream quality: wired and Apple P2P paths can run at 60 FPS and higher bitrate, while router WiFi is capped for stability.
 - Optional Chrome audio routing to the receiver so selected browser audio can play on the iPad instead of the Mac.
 - Pairing-code based authentication before streaming starts.
-- Authenticated iPad input events before macOS Accessibility injection.
+- Display-only receiver behavior: iPad touch gestures are not forwarded as Mac input.
 - Device de-duplication, hidden device records, and manual device removal.
 - iPad disconnected screen when the Mac stops sharing or the network drops.
 
@@ -32,11 +32,11 @@ For the best second-screen experience, prefer `USB / Thunderbolt Cable` when ava
 
 - Pairing codes are normalized, hashed, and stored locally in Keychain on both Mac and iPad.
 - Mac and iPad perform a nonce-based HMAC-SHA256 handshake before streaming starts.
-- A session key derived from the pairing secret and both nonces authenticates iPad input events.
-- The Mac rejects unauthenticated, tampered, or replayed input before calling the CGEvent injection path.
+- A session key derived from the pairing secret and both nonces authenticates receiver control messages such as heartbeat and screen-size updates.
+- The Mac ignores iPad-originated pointer, scroll, touch, and keyboard input. Local Mac input remains the only control path.
 - Bonjour discovery uses the YC Cast service type `_yc-cast._tcp`.
 
-YC Cast still needs sensitive macOS permissions. Screen Recording is required to capture the virtual display, Accessibility is required only if iPad input should control the Mac, and Audio Recording is required only when app audio routing is enabled.
+YC Cast still needs sensitive macOS permissions. Screen Recording is required to capture the virtual display, and Audio Recording is required only when app audio routing is enabled. Accessibility is not required for the display-only Mac-to-iPad workflow.
 
 Video and audio frames are intended for trusted local networks and are not encrypted beyond the local transport. Use a private pairing code and avoid untrusted networks.
 
@@ -52,7 +52,7 @@ Use a long pairing code that is not reused anywhere else. Save the exact same co
 4. Keep `Use as` set to `Extended Display`.
 5. Choose the network mode for the connection. `Auto` is easiest, `Force P2P (WiFi Direct)` is usually better for nearby wireless devices, and `USB / Thunderbolt Cable` is best when a cable path is active.
 6. Grant Screen Recording when prompted.
-7. Grant Accessibility if you want touch, mouse, and keyboard input from the iPad.
+7. Control the extended display from the Mac's keyboard, trackpad, mouse, and normal macOS clipboard.
 8. Grant Audio Recording if you enable Chrome audio routing.
 
 ### iPad
@@ -117,8 +117,8 @@ YC Cast is released under the MIT License. See `LICENSE`.
 - With different pairing codes on Mac and iPad, the connection fails during pairing.
 - With the same pairing code, the Mac connects and starts streaming only after authentication succeeds.
 - The iPad shows the streamed virtual display.
-- Touch or pointer input on the iPad moves/clicks only inside the paired Mac display.
-- Keyboard input from the iPad affects the paired Mac display when Accessibility is granted.
+- Touch, pointer, scroll, and keyboard input on the iPad are not forwarded to the Mac.
+- Copy/paste remains a local OS behavior: use the Mac clipboard for the streamed Mac display, or Universal Clipboard outside YC Cast if your Apple devices provide it.
 - P2P mode logs an AWDL path when Apple peer-to-peer networking is active.
 - USB / Thunderbolt Cable mode logs a wired/iPad USB path when the system selects that interface.
 - Chrome audio routing plays selected browser audio on the receiver when audio permissions are granted.
@@ -137,8 +137,8 @@ The main runtime gates are:
 
 - Mac: `NetworkClient.performPairingHandshake(...)` must succeed before `startPipeline(for:)`.
 - iPad: `NetworkListenerIOS.performPairingHandshake(...)` must succeed before a connection is added to `connectedClients`.
-- Mac input: `NetworkClient.receiveTCP(...)` verifies `AuthenticatedEnvelope` before dispatching to `InputHandler`.
-- iPad input: `NetworkListenerIOS.sendInputEvent(...)` seals each input event with the session key.
+- Receiver commands: `NetworkClient.receiveTCP(...)` accepts authenticated heartbeat/keyframe/screen-size messages while ignoring iPad input events.
+- iPad control: `VideoRendererViewIOS` does not register touch-control gestures, and `ViewController.didTriggerInput(...)` does not forward local touches to the Mac.
 
 Some internal Swift package targets and source paths still use historical `BetterCast*` names. The user-facing app name, bundle display name, service type, packaging scripts, and release documentation are YC Cast.
 
