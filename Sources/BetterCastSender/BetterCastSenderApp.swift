@@ -2394,7 +2394,6 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
             }
         }
     }
-    @Published private(set) var iPadInputEnabled: Bool = false
     @Published var displayBrightness: Float = Float(DisplayBrightnessControl.getBrightness()) {
         didSet { DisplayBrightnessControl.setBrightness(Double(displayBrightness)) }
     }
@@ -2596,7 +2595,6 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
             .flatMap(VirtualDisplayManager.DisplayPlacement.init(rawValue:)) ?? .right
         hiddenDeviceKeys = Set(UserDefaults.standard.stringArray(forKey: Self.hiddenDeviceKeysDefaultsKey) ?? [])
         // YC Cast is display-only: all direct control stays on the Mac.
-        iPadInputEnabled = false
         UserDefaults.standard.removeObject(forKey: "iPadInputEnabled")
         
         // We can't monitor recursively in init easily, but we can start it.
@@ -3973,10 +3971,10 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
                                 } else if event.type == .command && event.keyCode == 777 {
                                     // Screen info from receiver: deltaX=width, deltaY=height (pixels)
                                     self.handleScreenInfo(for: connectionId, width: Int(event.deltaX), height: Int(event.deltaY))
-                                } else if !self.iPadInputEnabled {
+                                } else {
+                                    // Display-only mode: authenticated receiver commands are allowed,
+                                    // but iPad pointer, scroll, touch, and keyboard input are ignored.
                                     return
-                                } else if self.isDuplicateEvent(event.eventId) == false {
-                                    InputHandler.shared.handle(event: event, for: connectionId)
                                 }
                             }
                         } catch {

@@ -3,7 +3,7 @@ import UIKit
 import Network
 import BetterCastShared
 
-class ViewController: UIViewController, NetworkListenerDelegate, InputDelegate {
+class ViewController: UIViewController, NetworkListenerDelegate {
 
     private var renderer: VideoRendererViewIOS!
     private var settingsOverlay: UIView!
@@ -28,7 +28,6 @@ class ViewController: UIViewController, NetworkListenerDelegate, InputDelegate {
         // 1. Setup Renderer
         renderer = VideoRendererViewIOS(frame: view.bounds)
         renderer.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        renderer.inputDelegate = self
         view.addSubview(renderer)
 
         // 2. Setup Onboarding Screen
@@ -746,13 +745,6 @@ class ViewController: UIViewController, NetworkListenerDelegate, InputDelegate {
     
     func networkListener(_ listener: NetworkListenerIOS, didReceiveInput event: InputEvent) {
         // Receiver doesn't handle input from sender usually, but protocol demands conformance
-    }
-    
-    // MARK: - InputDelegate
-    
-    func didTriggerInput(_ event: InputEvent) {
-        // Display-only receiver: local iPad touches should never control the Mac.
-        // Connection commands such as screen-size updates are sent explicitly elsewhere.
     }
     
     override var prefersStatusBarHidden: Bool {

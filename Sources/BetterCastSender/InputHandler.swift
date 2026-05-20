@@ -1,14 +1,11 @@
 import Foundation
 import CoreGraphics
-import Cocoa
 
 class InputHandler {
     static let shared = InputHandler()
 
     // Per-connection display bounds for multi-display routing
     private var displayBoundsMap: [UUID: CGRect] = [:]
-
-    private var missingBoundsLogThrottle = 0
 
     func updateDisplayBounds(bounds: CGRect, for connectionId: UUID) {
         displayBoundsMap[connectionId] = bounds
@@ -25,82 +22,5 @@ class InputHandler {
 
     func removeAllDisplayBounds() {
         displayBoundsMap.removeAll()
-    }
-    
-    func checkAccessibility() {
-        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-        let trusted = AXIsProcessTrustedWithOptions(options)
-        if trusted {
-             LogManager.shared.log("InputHandler: Accessibility Permissions Granted. Direct Control Active.")
-        } else {
-             LogManager.shared.log("InputHandler: Accessibility Permissions MISSING. Mouse control will fail.")
-             // macOS will show prompt automatically due to options
-        }
-    }
-    
-    private var logThrottle = 0
-
-    func handle(event: InputEvent, for connectionId: UUID) {
-        guard let bounds = displayBoundsMap[connectionId],
-              bounds.width > 0,
-              bounds.height > 0 else {
-            missingBoundsLogThrottle += 1
-            if missingBoundsLogThrottle % 30 == 1 {
-                LogManager.shared.log("InputHandler: Dropping input without display bounds for connection \(connectionId.uuidString.prefix(8))")
-            }
-            return
-        }
-
-        let x = bounds.origin.x + (CGFloat(event.x) * bounds.width)
-        let y = bounds.origin.y + (CGFloat(event.y) * bounds.height)
-        let point = CGPoint(x: x, y: y)
-
-        // Log every 60th mouse event to avoid spam
-        if event.type == .mouseMove {
-            logThrottle += 1
-            if logThrottle % 60 == 1 {
-                LogManager.shared.log("InputHandler: move → (\(Int(x)),\(Int(y))) bounds=\(bounds) conn=\(connectionId.uuidString.prefix(8))")
-            }
-        }
-        
-        switch event.type {
-        case .mouseMove:
-            postMouseEvent(type: .mouseMoved, point: point, button: .left) // Button ignored for move
-        case .leftMouseDown:
-            postMouseEvent(type: .leftMouseDown, point: point, button: .left)
-        case .leftMouseUp:
-            postMouseEvent(type: .leftMouseUp, point: point, button: .left)
-        case .rightMouseDown:
-            postMouseEvent(type: .rightMouseDown, point: point, button: .right)
-        case .rightMouseUp:
-            postMouseEvent(type: .rightMouseUp, point: point, button: .right)
-        case .keyDown:
-            postKeyboardEvent(keyCode: event.keyCode, keyDown: true)
-        case .keyUp:
-            postKeyboardEvent(keyCode: event.keyCode, keyDown: false)
-        case .scrollWheel:
-            switch event.keyCode {
-            case 1, 2, 3:
-                // Keep iPad as a plain second display: do not inject system zoom/rotation gestures.
-                break
-            default:
-                // Normal two-finger scroll
-                if let scrollEvent = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: Int32(event.deltaY), wheel2: Int32(event.deltaX), wheel3: 0) {
-                    scrollEvent.post(tap: .cghidEventTap)
-                }
-            }
-        case .command:
-            break // Handled by NetworkClient
-        }
-    }
-    
-    private func postMouseEvent(type: CGEventType, point: CGPoint, button: CGMouseButton) {
-        guard let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: point, mouseButton: button) else { return }
-        event.post(tap: .cghidEventTap)
-    }
-    
-    private func postKeyboardEvent(keyCode: UInt16, keyDown: Bool) {
-        guard let event = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(keyCode), keyDown: keyDown) else { return }
-        event.post(tap: .cghidEventTap)
     }
 }

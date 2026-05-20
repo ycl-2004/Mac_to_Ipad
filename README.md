@@ -138,8 +138,8 @@ The main runtime gates are:
 - Mac: `NetworkClient.performPairingHandshake(...)` must succeed before `startPipeline(for:)`.
 - iPad: `NetworkListenerIOS.performPairingHandshake(...)` must succeed before a connection is added to `connectedClients`.
 - Receiver commands: `NetworkClient.receiveTCP(...)` accepts authenticated heartbeat/keyframe/screen-size messages while ignoring iPad input events.
-- iPad control: `VideoRendererViewIOS` does not register touch-control gestures, and `ViewController.didTriggerInput(...)` does not forward local touches to the Mac.
+- iPad control: `VideoRendererViewIOS` is display-only and does not register touch-control gestures.
 
 Some internal Swift package targets and source paths still use historical `BetterCast*` names. The user-facing app name, bundle display name, service type, packaging scripts, and release documentation are YC Cast.
 
-See `docs/decisions/ADR-001-private-mac-ipad-authenticated-p2p.md` for the design rationale.
+See `docs/decisions/ADR-002-display-only-local-mac-control.md` for the current display-only design rationale.
