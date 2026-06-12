@@ -16,6 +16,11 @@ The current product path is a macOS sender plus an iPadOS receiver.
 - Display-only receiver behavior: iPad touch gestures are not forwarded as Mac input.
 - Device de-duplication, hidden device records, and manual device removal.
 - iPad disconnected screen when the Mac stops sharing or the network drops.
+- Automatic reconnect after unexpected wireless drops: the Mac retries up to 3 times (2s/4s/8s backoff). Manual disconnects are never retried.
+- Background grace period: backgrounding the iPad receiver pauses the stream for up to 5 minutes without destroying the Mac virtual display; returning resumes the session in place.
+- Fast stream recovery: the iPad requests a fresh keyframe after decode errors and when returning to the foreground.
+- Clear connection states on both sides: the Mac sidebar shows a live status indicator (discovering, connecting, authenticating, connected, reconnecting, failed), and the iPad distinguishes waiting, connecting, connected, device disconnected, and connection lost.
+- The iPad never freezes on the last video frame: a stream watchdog detects silent connection loss (Mac crash, power loss, network drop) within ~8 seconds and shows an explicit "Connection lost" screen, and every disconnect clears the old frame.
 
 ## Network Modes
 
@@ -27,6 +32,23 @@ YC Cast exposes the transport preference in Settings:
 - `USB / Thunderbolt Cable` disables WiFi/P2P for new connections and asks the system to use a wired-style network path such as iPad USB networking, Ethernet, or Thunderbolt Bridge.
 
 For the best second-screen experience, prefer `USB / Thunderbolt Cable` when available. If running wirelessly, keep both devices nearby and try `Force P2P (WiFi Direct)` before falling back to router WiFi.
+
+### Wireless Behavior and Troubleshooting
+
+- Backgrounding the receiver app (app switcher, swiping home, locking the iPad) is safe for short breaks. The iPad tells the Mac it is backgrounding, and the Mac holds the session in a 5-minute grace period: streaming pauses but the virtual display and connection stay alive. Returning within 5 minutes resumes the same session with a fresh keyframe and no display rearrangement. After 5 minutes the Mac disconnects cleanly and removes the virtual display.
+- Force-quitting the receiver, disconnecting manually on either device, or a real network failure skips the grace period and disconnects immediately.
+- iPadOS system gestures (app switcher, Slide Over, Stage Manager) only change how the receiver app is presented on the iPad. They are never forwarded to the Mac. Mac-side gestures such as Mission Control change the streamed content because the iPad shows a real Mac display.
+- After an unexpected wireless drop the Mac retries the connection 3 times with backoff. The sender log shows `Auto-reconnect to ... in Ns`. If all attempts fail, reconnect manually from the sidebar.
+- For diagnosing drops, the sender log records the connection path (`P2P Direct Link (AWDL) Active` vs `Likely using Router/Infrastructure`), path viability changes, and the disconnect reason (heartbeat timeout, transport failure, or receive error).
+
+## Gestures
+
+The iPad is a second screen, not a second gesture controller. All control of the Mac — including system gestures — happens on the Mac itself.
+
+- Mac trackpad gestures (five-finger pinch for Launchpad, Mission Control, App Exposé, Spaces switching, multi-finger swipes) always remain native macOS gestures. YC Cast installs no event taps, no event monitors, and never changes `presentationOptions`, so it cannot block, swallow, or reinterpret them — before, during, or after a connection.
+- macOS applies these gestures to the display where the pointer currently is. If the pointer is on the YC Cast virtual display, Launchpad or Mission Control appears on that display (and is therefore visible on the iPad). That is standard macOS multi-display behavior — the same thing happens with a cabled external monitor — not input forwarding, and YC Cast does not override it.
+- Touches and gestures on the iPad are never sent to the Mac. A five-finger pinch on the iPad is an iPadOS system gesture: it minimizes the receiver app on the iPad (starting the background grace period) and cannot trigger Launchpad on the Mac. No app can intercept iPadOS system gestures. The only iPad gesture YC Cast registers is a local three-finger tap that reveals the settings button.
+- Copy/paste on the streamed display uses the Mac clipboard, because the virtual display is the Mac. Use the Mac keyboard and trackpad as usual.
 
 ## Security Model
 
@@ -64,6 +86,11 @@ Use a long pairing code that is not reused anywhere else. Save the exact same co
 5. Enter and save the same pairing code used on the Mac.
 6. Leave the receiver open.
 7. When the iPad appears in the Mac sidebar, connect from the Mac.
+
+The iPad receiver supports iPadOS multitasking and windowed presentation, so
+another iPad window can temporarily sit above it. YC Cast still reports the
+full physical iPad screen size to the Mac so the virtual display resolution
+does not shrink when the receiver window is resized.
 
 ## Build Commands
 
@@ -117,6 +144,7 @@ YC Cast is released under the MIT License. See `LICENSE`.
 - With different pairing codes on Mac and iPad, the connection fails during pairing.
 - With the same pairing code, the Mac connects and starts streaming only after authentication succeeds.
 - The iPad shows the streamed virtual display.
+- On iPadOS with Stage Manager or Slide Over, another window can appear over the receiver without changing the Mac virtual display resolution.
 - Touch, pointer, scroll, and keyboard input on the iPad are not forwarded to the Mac.
 - Copy/paste remains a local OS behavior: use the Mac clipboard for the streamed Mac display, or Universal Clipboard outside YC Cast if your Apple devices provide it.
 - P2P mode logs an AWDL path when Apple peer-to-peer networking is active.
@@ -124,6 +152,14 @@ YC Cast is released under the MIT License. See `LICENSE`.
 - Chrome audio routing plays selected browser audio on the receiver when audio permissions are granted.
 - Clearing pairing on either device prevents future connections until the code is saved again.
 - Stop Sharing on the Mac returns the iPad to the disconnected screen.
+- After a forced wireless interruption (e.g. toggling iPad WiFi briefly), the Mac auto-reconnects within ~15 seconds of the network returning.
+- A manual disconnect from the Mac sidebar does not trigger auto-reconnect.
+- Backgrounding the iPad receiver briefly (under 5 minutes) keeps the Mac virtual display alive; returning to the app resumes the stream in place without a pipeline restart.
+- Backgrounding the iPad receiver for over 5 minutes disconnects the Mac cleanly and removes the virtual display, with no reconnect attempts until the user acts.
+- Force-quitting the iPad receiver disconnects the Mac within seconds, not after the grace period.
+- Connecting works on the first click after saving the pairing code on either device (the dial retries once automatically if the direct link is cold).
+- Disconnecting from the Mac immediately shows the disconnected screen on the iPad with no residual video frame.
+- Quitting the Mac sender mid-stream shows "Connection lost" on the iPad within ~8 seconds.
 
 ## Architecture Notes
 

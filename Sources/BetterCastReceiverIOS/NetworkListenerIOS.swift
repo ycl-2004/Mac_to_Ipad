@@ -5,8 +5,18 @@ import Network
 import CoreMedia
 import BetterCastShared
 
+/// Single source of truth for the receiver's connection state.
+/// The status text is derived alongside it for display.
+enum ReceiverState {
+    case waiting        // listening, no sender connected
+    case connecting     // sender connected, pairing/authenticating
+    case connected      // streaming session active
+    case connectionLost // stream went silent without a clean disconnect (watchdog)
+    case disconnected   // sender ended the session cleanly
+}
+
 protocol NetworkListenerDelegate: AnyObject {
-    func networkListener(_ listener: NetworkListenerIOS, didUpdateStatus status: String)
+    func networkListener(_ listener: NetworkListenerIOS, didUpdate state: ReceiverState, statusText: String)
     func networkListener(_ listener: NetworkListenerIOS, didReceiveInput event: InputEvent) // If we were receiving input
 }
 
@@ -40,19 +50,48 @@ class NetworkListenerIOS {
     // Heartbeat
     private var heartbeatTimer: Timer?
     private var inputSequence: UInt64 = 0
-    
+
+    // Stream-health watchdog: a connected sender streams frames continuously,
+    // so prolonged silence means the connection died without a clean close
+    // (Mac force quit, power loss, network drop).
+    private var lastDataReceived = Date()
+    private let streamSilenceTimeout: TimeInterval = 8.0
+    private var pendingLossNotification = false
+
+    private var isStarted = false
+
     init() {}
-    
+
     func setup(decoder: VideoDecoder, renderer: VideoRendererIOS) {
         self.videoDecoder = decoder
         self.videoRenderer = renderer
         self.audioPlayer = AudioPlayerIOS()
         decoder.delegate = self
     }
-    
+
     func start() {
+        // Idempotent: saving the pairing code repeatedly must not stack
+        // listeners (duplicate Bonjour records confuse the sender's first
+        // dial) or heartbeat timers.
+        guard !isStarted else {
+            LogManager.shared.log("ReceiverIOS: start() ignored — already running")
+            return
+        }
+        isStarted = true
         startPrivateP2P()
         startHeartbeat()
+    }
+
+    private func notifyState(_ state: ReceiverState, _ text: String) {
+        DispatchQueue.main.async {
+            self.delegate?.networkListener(self, didUpdate: state, statusText: text)
+        }
+    }
+
+    /// Called by the view controller when the app returns to the foreground so
+    /// the watchdog doesn't count suspended time as stream silence.
+    func noteForegroundResumed() {
+        lastDataReceived = Date()
     }
 
     private func startPrivateP2P() {
@@ -85,12 +124,10 @@ class NetworkListenerIOS {
             self.tcpP2PListener = p2pListener
         } catch {
             LogManager.shared.log("ReceiverIOS (TCP-P2P): Error \(error)")
-            DispatchQueue.main.async {
-                self.delegate?.networkListener(self, didUpdateStatus: "Failed: \(error.localizedDescription)")
-            }
+            notifyState(.waiting, "Waiting for network access...")
         }
     }
-    
+
     private func startTCP() {
         // Use custom name from settings, fall back to system device name
         let deviceName = UserDefaults.standard.string(forKey: "customDeviceName")
@@ -196,17 +233,15 @@ class NetworkListenerIOS {
             } else {
                 LogManager.shared.log("ReceiverIOS (\(type)): Ready")
             }
-            DispatchQueue.main.async {
-                if type == "TCP" {
-                    self.delegate?.networkListener(self, didUpdateStatus: "Ready. Waiting for Sender...")
-                }
+            // Only announce "waiting" while no session is active — the listener
+            // also reports ready on restarts during a live session.
+            if connectedClients.isEmpty {
+                notifyState(.waiting, "Ready. Waiting for Sender...")
             }
         case .failed(let error):
             LogManager.shared.log("ReceiverIOS (\(type)): Failed \(error) — restarting...")
-            DispatchQueue.main.async {
-                if type == "TCP" {
-                    self.delegate?.networkListener(self, didUpdateStatus: "Restarting listener...")
-                }
+            if connectedClients.isEmpty {
+                notifyState(.waiting, "Restarting listener...")
             }
             // Auto-restart the failed listener
             switch type {
@@ -217,10 +252,15 @@ class NetworkListenerIOS {
                     self?.startTCP()
                 }
             case "TCP-P2P":
-                // Private build starts only the P2P listener.
+                // Private build starts only this listener — it MUST come back after a
+                // failure (Wi-Fi transition, AWDL teardown), or the iPad stays
+                // undiscoverable until the app is relaunched.
                 self.tcpP2PListener?.cancel()
                 self.tcpP2PListener = nil
-                LogManager.shared.log("ReceiverIOS (TCP-P2P): AWDL listener stopped")
+                LogManager.shared.log("ReceiverIOS (TCP-P2P): Listener stopped — restarting in 1s...")
+                DispatchQueue.global().asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                    self?.startPrivateP2P()
+                }
             default:
                 self.udpListener?.cancel()
                 self.udpListener = nil
@@ -239,9 +279,7 @@ class NetworkListenerIOS {
             switch state {
             case .ready:
                 LogManager.shared.log("ReceiverIOS: \(type) Connection ready")
-                DispatchQueue.main.async {
-                    self.delegate?.networkListener(self, didUpdateStatus: "Authenticating...")
-                }
+                self.notifyState(.connecting, "Authenticating...")
 
                 self.performPairingHandshake(on: connection) { [weak self] result in
                     guard let self = self else { return }
@@ -254,9 +292,8 @@ class NetworkListenerIOS {
                             self.connectedClients.append(connection)
                         }
 
-                        DispatchQueue.main.async {
-                            self.delegate?.networkListener(self, didUpdateStatus: "Connected via \(type)")
-                        }
+                        self.lastDataReceived = Date()
+                        self.notifyState(.connected, "Connected")
 
                         if type == "UDP" {
                             self.receiveUDP(on: connection)
@@ -265,9 +302,7 @@ class NetworkListenerIOS {
                         }
                     case .failure(let error):
                         LogManager.shared.log("ReceiverIOS: Pairing failed: \(error.localizedDescription)")
-                        DispatchQueue.main.async {
-                            self.delegate?.networkListener(self, didUpdateStatus: "Pairing failed")
-                        }
+                        self.notifyState(.waiting, "Pairing failed — check that both devices use the same code")
                         connection.cancel()
                     }
                 }
@@ -293,8 +328,11 @@ class NetworkListenerIOS {
 
         if wasConnected && connectedClients.isEmpty {
             audioPlayer?.stop()
-            DispatchQueue.main.async {
-                self.delegate?.networkListener(self, didUpdateStatus: "Device disconnected")
+            if pendingLossNotification {
+                pendingLossNotification = false
+                notifyState(.connectionLost, "Connection lost")
+            } else {
+                notifyState(.disconnected, "Device disconnected")
             }
         }
     }
@@ -486,6 +524,7 @@ class NetworkListenerIOS {
     }
 
     private func handleReceivedBody(_ body: Data, connection: NWConnection) {
+        lastDataReceived = Date()
         let connId = ObjectIdentifier(connection)
         let firstByte = body[body.startIndex]
 
@@ -587,20 +626,84 @@ class NetworkListenerIOS {
     private func startHeartbeat() {
         LogManager.shared.log("ReceiverIOS: Starting heartbeat timer (0.5s interval)")
         DispatchQueue.main.async { [weak self] in
-            self?.heartbeatTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            let timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
                 self?.sendHeartbeat()
+                self?.checkStreamHealth()
             }
+            // Allow coalescing so a busy main thread doesn't starve heartbeats outright,
+            // and keep firing during UI tracking (scrolling/gesture interaction).
+            timer.tolerance = 0.1
+            RunLoop.main.add(timer, forMode: .common)
+            self?.heartbeatTimer = timer
         }
     }
-    
+
     private func sendHeartbeat() {
-        LogManager.shared.log("ReceiverIOS: Sending heartbeat (keyCode 888)")
-        // Send a simple heartbeat message (empty input event with type .command and keyCode 888)
+        // Don't log each beat (2 lines/sec drowns the log) and don't bother
+        // building envelopes when no sender is connected.
+        guard !connectedClients.isEmpty else { return }
+        // While backgrounded, stay silent on purpose: the sender is holding the
+        // session in its background grace period, and any authenticated message
+        // (including a heartbeat) would end that grace early. Heartbeats resume
+        // automatically when the app becomes active again.
+        if UIApplication.shared.applicationState == .background { return }
         let heartbeat = InputEvent(
             type: .command,
             keyCode: 888 // Special code for heartbeat
         )
         sendInputEvent(heartbeat)
+    }
+
+    /// Tell the sender we are entering the background (command 555) so it holds
+    /// the session and virtual display in a grace period instead of tearing down
+    /// after the 15s heartbeat timeout. Sent inside a short background task from
+    /// ViewController so it flushes before iPadOS suspends the app.
+    func sendBackgroundHold(completion: (() -> Void)? = nil) {
+        guard !connectedClients.isEmpty else {
+            completion?()
+            return
+        }
+        LogManager.shared.log("ReceiverIOS: Sending background hold notice (keyCode 555)")
+        sendInputEvent(InputEvent(type: .command, keyCode: 555))
+        // sendInputEvent hops to networkQueue; signal completion after the send
+        // has been enqueued and given a moment to flush.
+        networkQueue.async {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                completion?()
+            }
+        }
+    }
+
+    /// Watchdog: a live sender streams frames continuously, so prolonged
+    /// silence while we are in the foreground means the connection died
+    /// without a clean close. Surface "connection lost" and drop the dead
+    /// connections instead of freezing on the last frame forever.
+    private func checkStreamHealth() {
+        guard !connectedClients.isEmpty else { return }
+        // Backgrounded: the sender pauses the stream during its grace period,
+        // so silence is expected. The clock is reset on foreground return.
+        guard UIApplication.shared.applicationState == .active else { return }
+        guard Date().timeIntervalSince(lastDataReceived) > streamSilenceTimeout else { return }
+
+        LogManager.shared.log("ReceiverIOS: No data for \(Int(streamSilenceTimeout))s — declaring connection lost")
+        pendingLossNotification = true
+        let stale = connectedClients
+        networkQueue.async {
+            for connection in stale {
+                connection.cancel()
+            }
+        }
+        // Reset so we don't re-trigger every tick while cancels propagate.
+        lastDataReceived = Date()
+    }
+
+    /// Request a keyframe (command 999) from the sender, throttled to one request
+    /// per 2 seconds. Used for decode-error recovery on the TCP path.
+    func requestKeyframeThrottled(reason: String) {
+        guard Date().timeIntervalSince(lastKeyframeRequest) > 2.0 else { return }
+        lastKeyframeRequest = Date()
+        LogManager.shared.log("ReceiverIOS: Requesting keyframe (\(reason))")
+        sendInputEvent(InputEvent(type: .command, keyCode: 999))
     }
     
     func sendInputEvent(_ event: InputEvent) {
@@ -639,6 +742,12 @@ extension NetworkListenerIOS: VideoDecoderDelegate {
         DispatchQueue.main.async {
             self.videoRenderer?.enqueue(sampleBuffer)
         }
+    }
+
+    func didFailToDecodeFrame(status: OSStatus) {
+        // Broken reference chain (e.g. sender dropped a P-frame under WiFi
+        // backpressure). Ask for a fresh keyframe instead of waiting out the GOP.
+        requestKeyframeThrottled(reason: "decode error \(status)")
     }
 }
 #endif

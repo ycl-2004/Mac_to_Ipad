@@ -769,7 +769,24 @@ struct SidebarView: View {
         .navigationTitle("YC Cast")
         .listStyle(.sidebar)
         .safeAreaInset(edge: .bottom) {
-            HStack {
+            HStack(spacing: 6) {
+                // Native-feeling connection state: dot or spinner + phase text.
+                if client.connectionPhase.isBusy {
+                    ProgressView()
+                        .controlSize(.small)
+                        .scaleEffect(0.6)
+                        .frame(width: 8, height: 8)
+                } else {
+                    Circle()
+                        .fill(phaseColor)
+                        .frame(width: 8, height: 8)
+                }
+                Text(client.status)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .help(client.status)
                 Spacer()
                 Button(role: .destructive) {
                     client.quitApp()
@@ -782,6 +799,17 @@ struct SidebarView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
+            .background(.bar)
+        }
+    }
+
+    private var phaseColor: Color {
+        switch client.connectionPhase {
+        case .connected: return .green
+        case .failed: return .red
+        case .disconnected: return .secondary.opacity(0.5)
+        case .discovering: return .blue
+        default: return .orange
         }
     }
 
@@ -918,14 +946,20 @@ struct SidebarDeviceRow: View {
                 .foregroundColor(isSelected ? .accentColor : .primary)
                 Spacer()
                 if !isConnected && !isAndroid {
-                    Button {
-                        client.connect(to: service)
-                    } label: {
-                        Image(systemName: "link")
+                    if client.isConnecting(to: service) {
+                        ProgressView()
+                            .controlSize(.mini)
+                            .help("Connecting...")
+                    } else {
+                        Button {
+                            client.connect(to: service)
+                        } label: {
+                            Image(systemName: "link")
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.mini)
+                        .tint(.accentColor)
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.mini)
-                    .tint(.accentColor)
                 }
             }
             .contentShape(Rectangle())
@@ -1085,11 +1119,12 @@ struct DetailPanelView: View {
                                     .foregroundStyle(.secondary)
                             }
                             Spacer()
-                            Button("Connect") {
+                            Button(client.isConnecting(to: service) ? "Connecting..." : "Connect") {
                                 client.connect(to: service)
                             }
                             .buttonStyle(.borderedProminent)
                             .controlSize(.small)
+                            .disabled(client.isConnecting(to: service))
 
                             Button(role: .destructive) {
                                 client.forgetDevice(named: service.name)
@@ -1664,11 +1699,12 @@ struct DisplayOverviewView: View {
 
                                         Spacer()
 
-                                        Button("Connect") {
+                                        Button(client.isConnecting(to: service) ? "Connecting..." : "Connect") {
                                             client.connect(to: service)
                                         }
                                         .buttonStyle(.borderedProminent)
                                         .controlSize(.small)
+                                        .disabled(client.isConnecting(to: service))
                                     }
                                     .padding(.vertical, 4)
                                 }
@@ -2077,11 +2113,12 @@ struct DiscoveredDeviceView: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button("Connect") {
+                    Button(client.isConnecting(to: service) ? "Connecting..." : "Connect") {
                         client.connect(to: service)
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
+                    .disabled(client.isConnecting(to: service))
                     InfoTip(text: isAndroid ? "Connects over Wi-Fi without ADB. Easier setup, usually lower quality than USB." : "Connects over local network. Apple receivers use direct AWDL when the selected mode allows it.")
                 }
             }
@@ -2338,6 +2375,12 @@ struct ConnectionPipeline {
     var reportedScreenWidth: Int? = nil
     var reportedScreenHeight: Int? = nil
     var lastInputSequence: UInt64 = 0
+    // Background grace: set when the receiver announces it is backgrounding
+    // (command 555). While set, the sender pauses video/audio sends, keeps the
+    // virtual display and connection alive, and replaces the 15s heartbeat
+    // timeout with a longer grace deadline. Cleared by any authenticated
+    // message from the receiver.
+    var backgroundGraceStart: Date? = nil
 }
 
 private enum PairingTransportError: LocalizedError {
@@ -2372,6 +2415,23 @@ private enum PairingTransportError: LocalizedError {
     }
 }
 
+/// Single source of truth for the sender's connection lifecycle.
+/// `status` (free text) is derived alongside it for display.
+enum ConnectionPhase: String, Equatable {
+    case disconnected = "Disconnected"
+    case discovering = "Discovering"
+    case connecting = "Connecting"
+    case authenticating = "Authenticating"
+    case connected = "Connected"
+    case reconnecting = "Reconnecting"
+    case failed = "Failed"
+
+    var tintIsActive: Bool { self == .connected }
+    var isBusy: Bool {
+        self == .connecting || self == .authenticating || self == .reconnecting
+    }
+}
+
 class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegate, ScreenRecorderDelegate {
     private static let displayPlacementDefaultsKey = "displayPlacement"
     private static let hiddenDeviceKeysDefaultsKey = "hiddenDeviceKeys"
@@ -2381,11 +2441,23 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
     private let pairingSecretStore: PairingSecretStoring = KeychainPairingSecretStore()
 
     @Published var status: String = "Idle"
+    @Published private(set) var connectionPhase: ConnectionPhase = .disconnected
     @Published private(set) var hasPairingSecret: Bool = false
     @Published var foundServices: [DiscoveredService] = []
     @Published var connectedServices: [DiscoveredService] = []
     @Published var hiddenDeviceKeys: Set<String> = []
-    private var connectingServiceNames: Set<String> = [] // Prevent double-connect race
+    @Published private(set) var connectingServiceNames: Set<String> = [] // Prevent double-connect race; drives per-row spinners
+
+    /// Set phase and status text together so UI state can never drift from the text.
+    func setPhase(_ phase: ConnectionPhase, _ text: String) {
+        connectionPhase = phase
+        status = text
+    }
+
+    /// True while a dial/handshake to this service is in flight (for button state).
+    func isConnecting(to service: DiscoveredService) -> Bool {
+        connectingServiceNames.contains(deviceKey(for: service.name))
+    }
     @Published var useVirtualDisplay: Bool = true // Toggle between mirroring and extended display
     @Published var audioStreamingEnabled: Bool = false { // Master toggle for audio streaming
         didSet {
@@ -2484,6 +2556,7 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
 
     func forgetDevice(named name: String) {
         let key = deviceKey(for: name)
+        reconnectAttempts.removeValue(forKey: key)
         let matchingIds = pipelines.compactMap { id, pipeline in
             deviceKey(for: pipeline.service.name) == key ? id : nil
         }
@@ -2526,11 +2599,18 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         
         browser.stateUpdateHandler = { [weak self] state in
             DispatchQueue.main.async {
+                guard let self else { return }
                 switch state {
                 case .ready:
-                    self?.status = "Browsing (\(self?.connectionType ?? "?"))..."
+                    // Only surface "discovering" when idle — browsing continues
+                    // in the background while connected.
+                    if self.pipelines.isEmpty && self.connectingServiceNames.isEmpty {
+                        self.setPhase(.discovering, "Looking for devices...")
+                    }
                 case .failed(let error):
-                    self?.status = "Browsing failed: \(error.localizedDescription)"
+                    if self.pipelines.isEmpty {
+                        self.setPhase(.failed, "Browsing failed: \(error.localizedDescription)")
+                    }
                 default:
                     break
                 }
@@ -2839,8 +2919,22 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         updateConnectedDisplays()
 
         let count = pipelines.count
-        status = "Connected to \(count) device(s)"
+        setPhase(.connected, "Connected to \(count) device(s)")
+        clearReconnectState(forServiceNamed: service.name)
         LogManager.shared.log("Sender: Authenticated \(service.name) (Total: \(count), P2P: \(isP2P), typeByte: \(pipeline.supportsTypeByte))")
+
+        // Wireless diagnostics: log viability/path transitions on the stream
+        // connection so real-world drops are attributable in the logs.
+        connection.viabilityUpdateHandler = { viable in
+            LogManager.shared.log("Sender: Path \(viable ? "viable again ✅" : "NOT viable (radio/route lost) ⚠️") for \(service.name)")
+        }
+        connection.betterPathUpdateHandler = { better in
+            LogManager.shared.log("Sender: Better path \(better ? "available" : "no longer available") for \(service.name)")
+        }
+        connection.pathUpdateHandler = { path in
+            let interfaces = path.availableInterfaces.map(\.name).joined(separator: ", ")
+            LogManager.shared.log("Sender: Path changed for \(service.name): [\(interfaces)] status=\(path.status)")
+        }
 
         startPipeline(for: connectionId)
 
@@ -2865,13 +2959,13 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         let serviceKey = deviceKey(for: service.name)
         guard let secret = loadPairingSecret() else {
             connectingServiceNames.remove(serviceKey)
-            status = "Pairing required before connecting"
+            setPhase(.failed, "Pairing required before connecting")
             LogManager.shared.log("Pairing: Missing pairing code; refusing to stream to \(service.name)")
             connection.cancel()
             return
         }
 
-        status = "Authenticating \(service.name)..."
+        setPhase(.authenticating, "Authenticating \(service.name)...")
         performPairingHandshake(on: connection, secret: secret) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self else { return }
@@ -2891,7 +2985,7 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
                         sessionKey: sessionKey
                     )
                 case .failure(let error):
-                    self.status = "Pairing failed"
+                    self.setPhase(.failed, "Pairing failed — check that both devices use the same code")
                     LogManager.shared.log("Pairing: Authentication failed for \(service.name): \(error.localizedDescription)")
                     connection.cancel()
                     self.removeConnection(connectionId)
@@ -3061,7 +3155,7 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         }
     }
     
-    func connect(to service: DiscoveredService) {
+    func connect(to service: DiscoveredService, isRetry: Bool = false) {
         let serviceKey = deviceKey(for: service.name)
         // Check if already connected or currently connecting to this service
         if connectedServices.contains(where: { deviceKey(for: $0.name) == serviceKey }) {
@@ -3075,7 +3169,7 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         connectingServiceNames.insert(serviceKey)
 
         let deviceCount = pipelines.count + 1
-        self.status = "Connecting to \(service.name) (Device #\(deviceCount))..."
+        setPhase(.connecting, "Connecting to \(service.name) (Device #\(deviceCount))...")
 
         // Smart routing: Apple receivers (iOS/Mac) get P2P/AWDL, others get infrastructure
         let nameLower = service.name.lowercased()
@@ -3158,8 +3252,17 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
                 connection.cancel()
 
                 guard canRetryViaInfrastructure else {
-                    self.status = "Connection timed out"
-                    LogManager.shared.log("Sender: Connection to \(service.name) timed out in \(self.interfacePreference.rawValue)")
+                    // AWDL wakes on demand, so a cold first dial often times out and
+                    // the *second* attempt succeeds. Do that second attempt
+                    // automatically, once, before reporting failure.
+                    if !isRetry {
+                        LogManager.shared.log("Sender: Connection to \(service.name) timed out in \(self.interfacePreference.rawValue) — retrying once (link warm-up)")
+                        self.setPhase(.connecting, "Retrying \(service.name)...")
+                        self.connect(to: service, isRetry: true)
+                    } else {
+                        self.setPhase(.failed, "Connection to \(service.name) timed out")
+                        LogManager.shared.log("Sender: Connection to \(service.name) timed out in \(self.interfacePreference.rawValue) (after retry)")
+                    }
                     return
                 }
 
@@ -3217,16 +3320,23 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
                     timeoutWork.cancel()
                     self?.connectingServiceNames.remove(serviceKey)
                     LogManager.shared.log("Sender: Connection to \(service.name) failed: \(error)")
-                    self?.removeConnection(connectionId)
+                    // attemptReconnect only takes effect if an authenticated pipeline
+                    // existed (removeConnection no-ops otherwise), so failed dial
+                    // attempts don't trigger reconnect loops.
+                    self?.removeConnection(connectionId, attemptReconnect: true, reason: "transport failed: \(error)")
 
                     let remaining = self?.pipelines.count ?? 0
                     if remaining == 0 {
-                        self?.status = "All connections failed"
+                        // scheduleReconnect (if triggered above) immediately moves
+                        // the phase to .reconnecting after this.
+                        if self?.connectionPhase != .reconnecting {
+                            self?.setPhase(.failed, "Connection failed")
+                        }
                     } else {
-                        self?.status = "Connected to \(remaining) device(s)"
+                        self?.setPhase(.connected, "Connected to \(remaining) device(s)")
                     }
                 case .waiting(let error):
-                    self?.status = "Waiting... \(error.localizedDescription)"
+                    self?.setPhase(.connecting, "Waiting for \(service.name)... (\(error.localizedDescription))")
                 default:
                     break
                 }
@@ -3585,7 +3695,7 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         connectingServiceNames.insert(serviceKey)
 
         let deviceCount = pipelines.count + 1
-        self.status = "Connecting to \(service.name) (Device #\(deviceCount))..."
+        setPhase(.connecting, "Connecting to \(service.name) (Device #\(deviceCount))...")
 
         let connection = NWConnection(to: service.endpoint, using: parameters)
         let connectionId = UUID()
@@ -3629,16 +3739,20 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
                 case .failed(let error):
                     LogManager.shared.log("Sender: Connection to \(service.name) failed: \(error)")
                     self?.connectingServiceNames.remove(serviceKey)
-                    self?.removeConnection(connectionId)
+                    self?.removeConnection(connectionId, attemptReconnect: true, reason: "transport failed: \(error)")
 
                     let remaining = self?.pipelines.count ?? 0
                     if remaining == 0 {
-                        self?.status = "All connections failed"
+                        // scheduleReconnect (if triggered above) immediately moves
+                        // the phase to .reconnecting after this.
+                        if self?.connectionPhase != .reconnecting {
+                            self?.setPhase(.failed, "Connection failed")
+                        }
                     } else {
-                        self?.status = "Connected to \(remaining) device(s)"
+                        self?.setPhase(.connected, "Connected to \(remaining) device(s)")
                     }
                 case .waiting(let error):
-                    self?.status = "Waiting... \(error.localizedDescription)"
+                    self?.setPhase(.connecting, "Waiting for \(service.name)... (\(error.localizedDescription))")
                 default:
                     break
                 }
@@ -3777,30 +3891,105 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         }
     }
     
+    // How long a backgrounded receiver may stay silent before the session is
+    // cleanly torn down (virtual display destroyed). See ConnectionPipeline.backgroundGraceStart.
+    let backgroundGraceDuration: TimeInterval = 300
+
     func startHeartbeatMonitor() {
         heartbeatTimer?.invalidate()
         heartbeatTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             guard let self = self else { return }
             if !self.pipelines.isEmpty {
                 let now = Date()
-                var disconnectedIds: [UUID] = []
+                var heartbeatTimeoutIds: [UUID] = []
+                var graceExpiredIds: [UUID] = []
 
                 for (id, pipeline) in self.pipelines {
+                    // Backgrounded receivers are expected to be silent: skip the
+                    // 15s heartbeat check and apply the grace deadline instead.
+                    if let graceStart = pipeline.backgroundGraceStart {
+                        if now.timeIntervalSince(graceStart) > self.backgroundGraceDuration {
+                            LogManager.shared.log("Sender: Background grace period expired for \(pipeline.service.name) (\(Int(self.backgroundGraceDuration))s) — disconnecting cleanly")
+                            graceExpiredIds.append(id)
+                        }
+                        continue
+                    }
+
                     let interval = now.timeIntervalSince(pipeline.lastHeartbeat)
                     if interval > 15.0 {
                         LogManager.shared.log("Sender: Connection to \(pipeline.service.name) timed out (No Heartbeat for 15s)")
-                        disconnectedIds.append(id)
+                        heartbeatTimeoutIds.append(id)
                     }
                 }
 
-                for id in disconnectedIds {
-                    self.removeConnection(id)
+                for id in heartbeatTimeoutIds {
+                    self.removeConnection(id, attemptReconnect: true, reason: "heartbeat timeout")
+                }
+                // No auto-reconnect after grace expiry: the receiver is knowingly
+                // backgrounded, so re-dialing would fail until the user returns.
+                for id in graceExpiredIds {
+                    self.removeConnection(id, attemptReconnect: false, reason: "background grace period expired")
                 }
             }
         }
     }
-    
-    func removeConnection(_ connectionId: UUID) {
+
+    // MARK: - Auto-reconnect after unexpected drops
+    //
+    // Distinct from the Auto-Connect discovery setting: this only re-dials a device
+    // whose authenticated session dropped unexpectedly (heartbeat timeout, transport
+    // failure). Manual disconnects never trigger it.
+    private var reconnectAttempts: [String: Int] = [:]
+    private let maxReconnectAttempts = 3
+
+    private func clearReconnectState(forServiceNamed name: String) {
+        reconnectAttempts.removeValue(forKey: deviceKey(for: name))
+    }
+
+    private func scheduleReconnect(to service: DiscoveredService) {
+        let key = deviceKey(for: service.name)
+        let attempt = (reconnectAttempts[key] ?? 0) + 1
+        guard attempt <= maxReconnectAttempts else {
+            LogManager.shared.log("Sender: Giving up auto-reconnect to \(service.name) after \(maxReconnectAttempts) attempts")
+            reconnectAttempts.removeValue(forKey: key)
+            if pipelines.isEmpty {
+                setPhase(.failed, "Could not reconnect to \(service.name)")
+            }
+            return
+        }
+        reconnectAttempts[key] = attempt
+
+        let delay = pow(2.0, Double(attempt)) // 2s, 4s, 8s
+        if pipelines.isEmpty {
+            setPhase(.reconnecting, "Reconnecting to \(service.name) (attempt \(attempt) of \(maxReconnectAttempts))...")
+        }
+        LogManager.shared.log("Sender: Auto-reconnect to \(service.name) in \(Int(delay))s (attempt \(attempt)/\(maxReconnectAttempts))")
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self else { return }
+            // Abort if this reconnect cycle was cancelled (manual disconnect/forget)
+            // or superseded by a newer attempt.
+            guard self.reconnectAttempts[key] == attempt else { return }
+            guard !self.connectedServices.contains(where: { self.deviceKey(for: $0.name) == key }),
+                  !self.connectingServiceNames.contains(key) else {
+                self.reconnectAttempts.removeValue(forKey: key)
+                return
+            }
+            // Prefer the freshest Bonjour record if the device was re-discovered.
+            let target = self.foundServices.first(where: { self.deviceKey(for: $0.name) == key }) ?? service
+            LogManager.shared.log("Sender: Auto-reconnecting to \(target.name) (attempt \(attempt)/\(self.maxReconnectAttempts))")
+            self.connect(to: target)
+
+            // If this attempt doesn't produce an authenticated session, chain the
+            // next one. Success clears reconnectAttempts (see
+            // activateAuthenticatedConnection), which aborts the chain.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
+                guard let self, self.reconnectAttempts[key] == attempt else { return }
+                self.scheduleReconnect(to: service)
+            }
+        }
+    }
+
+    func removeConnection(_ connectionId: UUID, attemptReconnect: Bool = false, reason: String? = nil) {
         guard let pipeline = pipelines[connectionId] else { return }
 
         // Tear down this connection's pipeline
@@ -3823,15 +4012,20 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         connectedServices.removeAll { deviceKey(for: $0.name) == removedKey }
 
         let remaining = pipelines.count
-        LogManager.shared.log("Sender: Disconnected from \(pipeline.service.name). Remaining: \(remaining)")
+        let reasonNote = reason.map { " (\($0))" } ?? ""
+        LogManager.shared.log("Sender: Disconnected from \(pipeline.service.name)\(reasonNote). Remaining: \(remaining)")
 
         if remaining == 0 {
-            status = "Disconnected"
+            setPhase(.disconnected, "Disconnected")
             heartbeatTimer?.invalidate()
         } else {
-            status = "Connected to \(remaining) device(s)"
+            setPhase(.connected, "Connected to \(remaining) device(s)")
         }
         updateConnectedDisplays()
+
+        if attemptReconnect {
+            scheduleReconnect(to: pipeline.service)
+        }
     }
 
     private func sendDisconnectNotice(for pipeline: ConnectionPipeline) -> Bool {
@@ -3854,6 +4048,7 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
     }
 
     func disconnect() {
+        reconnectAttempts.removeAll()
         for (id, pipeline) in pipelines {
             pipeline.screenRecorder?.stopCapture()
             pipeline.processAudioCapture?.stop()
@@ -3864,18 +4059,22 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         pipelines.removeAll()
         connectedServices.removeAll()
         connectedDisplays.removeAll()
-        status = "Disconnected"
+        setPhase(.disconnected, "Disconnected")
         heartbeatTimer?.invalidate()
     }
 
     func disconnectService(_ service: DiscoveredService) {
         let serviceKey = deviceKey(for: service.name)
+        reconnectAttempts.removeValue(forKey: serviceKey)
         if let entry = pipelines.first(where: { deviceKey(for: $0.value.service.name) == serviceKey }) {
             removeConnection(entry.key)
         }
     }
 
     func disconnectConnection(_ connectionId: UUID) {
+        if let pipeline = pipelines[connectionId] {
+            clearReconnectState(forServiceNamed: pipeline.service.name)
+        }
         removeConnection(connectionId)
     }
 
@@ -3932,10 +4131,14 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
 
         connection.receive(minimumIncompleteLength: 4, maximumLength: 4) { [weak self] content, contentContext, isComplete, error in
             if let error = error {
-                // Fatal errors: connection is truly dead
+                // Fatal errors: connection is truly dead. Tear down immediately and
+                // try to reconnect instead of waiting for the 15s heartbeat timeout.
                 if case let NWError.posix(code) = error,
                    (code == .ECONNRESET || code == .ENOTCONN || code == .ECANCELED) {
                     LogManager.shared.log("Sender: Receive error (fatal): \(error)")
+                    DispatchQueue.main.async {
+                        self?.removeConnection(connectionId, attemptReconnect: true, reason: "receive error: \(error)")
+                    }
                     return
                 }
                 // Non-fatal (e.g. ENODATA/96): keep receiving, don't spam logs
@@ -3964,6 +4167,26 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
                                 self.pipelines[connectionId]?.lastInputSequence = envelope.sequence
                                 self.pipelines[connectionId]?.lastHeartbeat = Date()
 
+                                if event.type == .command && event.keyCode == 555 {
+                                    // Receiver is backgrounding: hold the session and the
+                                    // virtual display, pause sends, and switch to the
+                                    // grace deadline instead of the 15s heartbeat timeout.
+                                    if self.pipelines[connectionId]?.backgroundGraceStart == nil {
+                                        self.pipelines[connectionId]?.backgroundGraceStart = Date()
+                                        LogManager.shared.log("Sender: Receiver \(pipeline.service.name) entered background — grace period started (\(Int(self.backgroundGraceDuration))s), pausing stream, keeping virtual display")
+                                    }
+                                    return
+                                }
+
+                                // Any other authenticated message means the receiver is
+                                // active again — end the grace period and resume the stream.
+                                if let graceStart = self.pipelines[connectionId]?.backgroundGraceStart {
+                                    self.pipelines[connectionId]?.backgroundGraceStart = nil
+                                    let away = Int(Date().timeIntervalSince(graceStart))
+                                    LogManager.shared.log("Sender: Receiver \(pipeline.service.name) resumed after \(away)s in background — resuming stream")
+                                    self.pipelines[connectionId]?.videoEncoder?.forceKeyframe()
+                                }
+
                                 if event.type == .command && event.keyCode == 888 {
                                     // Heartbeat - ignore
                                 } else if event.type == .command && event.keyCode == 999 {
@@ -3974,6 +4197,9 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
                                 } else {
                                     // Display-only mode: authenticated receiver commands are allowed,
                                     // but iPad pointer, scroll, touch, and keyboard input are ignored.
+                                    // Log it — in the current product path no such event should ever
+                                    // arrive, so this line appearing means the boundary is being probed.
+                                    LogManager.shared.log("Sender: Ignoring receiver input event (type \(event.type.rawValue), keyCode \(event.keyCode)) from \(pipeline.service.name) — display-only mode")
                                     return
                                 }
                             }
@@ -4162,9 +4388,10 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
                 LogManager.shared.log("Sender: Virtual display created for \(serviceName) with ID \(displayID)")
                 LogManager.shared.log("Sender: Go to System Settings > Displays to arrange it")
             } else {
-                status = "Virtual display unavailable"
                 LogManager.shared.log("Sender: Failed to create virtual display for \(serviceName); refusing to mirror the main screen in Extended Display mode")
                 removeConnection(connectionId)
+                // Set after teardown so the failure reason stays visible.
+                setPhase(.failed, "Virtual display unavailable")
                 return
             }
         } else {
@@ -4292,8 +4519,9 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
         guard let entry = pipelines.first(where: { $0.value.screenRecorder === recorder }) else { return }
         LogManager.shared.log("Sender: Screen capture did not start for \(entry.value.service.name): \(reason)")
         DispatchQueue.main.async {
-            self.status = "Virtual display capture unavailable"
             self.removeConnection(entry.key)
+            // Set after teardown so the failure reason stays visible.
+            self.setPhase(.failed, "Screen capture unavailable — check Screen Recording permission")
         }
     }
 
@@ -4351,6 +4579,11 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
 
     func videoEncoder(_ encoder: VideoEncoder, didEncode data: Data, for connectionId: UUID, isKeyframe: Bool) {
         guard let pipeline = pipelines[connectionId] else { return }
+
+        // Background grace: receiver is suspended and can't drain the socket.
+        // Drop all frames (including keyframes) so nothing queues in the
+        // connection; a keyframe is forced on resume.
+        if pipeline.backgroundGraceStart != nil { return }
 
         encodedFrameCount += 1
         if encodedFrameCount <= 3 || encodedFrameCount % 300 == 0 {
@@ -4472,6 +4705,9 @@ class NetworkClient: ObservableObject, VideoEncoderDelegate, AudioEncoderDelegat
     // AudioEncoderDelegate - Send AAC audio to the specific connection
     func audioEncoder(_ encoder: AudioEncoder, didEncode data: Data, for connectionId: UUID) {
         guard let pipeline = pipelines[connectionId] else { return }
+
+        // Background grace: receiver is suspended — don't queue audio either.
+        if pipeline.backgroundGraceStart != nil { return }
 
         // Legacy receivers (iOS/Mac Swift) don't support audio — skip
         guard pipeline.supportsTypeByte else { return }

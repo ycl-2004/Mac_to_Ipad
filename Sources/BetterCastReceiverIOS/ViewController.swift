@@ -57,21 +57,96 @@ class ViewController: UIViewController, NetworkListenerDelegate {
         // Listen for orientation changes to update sender's virtual display
         NotificationCenter.default.addObserver(self, selector: #selector(orientationChanged), name: UIDevice.orientationDidChangeNotification, object: nil)
         UIDevice.current.beginGeneratingDeviceOrientationNotifications()
+
+        // Background/foreground transitions: while the app is backgrounded (app
+        // switcher, swipe home) heartbeats are suspended, so the Mac will drop the
+        // connection after its 15s heartbeat timeout. Log the transition so drops
+        // are attributable, and resync on return.
+        NotificationCenter.default.addObserver(self, selector: #selector(appDidEnterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(appWillEnterForeground), name: UIApplication.willEnterForegroundNotification, object: nil)
+    }
+
+    // Background grace: tell the sender we're backgrounding so it holds the
+    // session (and the Mac virtual display) for its grace period instead of
+    // tearing down on heartbeat timeout. A short background task keeps the app
+    // alive long enough to flush the notice before iPadOS suspends us.
+    private var backgroundNoticeTask: UIBackgroundTaskIdentifier = .invalid
+    private var backgroundEnteredAt: Date?
+
+    @objc private func appDidEnterBackground() {
+        backgroundEnteredAt = Date()
+        LogManager.shared.log("ViewController: App entered background — sending hold notice; sender grace period starts")
+
+        endBackgroundNoticeTask() // Defensive: never stack tasks
+        backgroundNoticeTask = UIApplication.shared.beginBackgroundTask(withName: "YCCast.BackgroundHoldNotice") { [weak self] in
+            // Expiry handler — iPadOS is about to suspend us regardless.
+            self?.endBackgroundNoticeTask()
+        }
+
+        networkListener?.sendBackgroundHold { [weak self] in
+            self?.endBackgroundNoticeTask()
+        }
+    }
+
+    private func endBackgroundNoticeTask() {
+        guard backgroundNoticeTask != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(backgroundNoticeTask)
+        backgroundNoticeTask = .invalid
+    }
+
+    @objc private func appWillEnterForeground() {
+        endBackgroundNoticeTask()
+        let awaySeconds = backgroundEnteredAt.map { Int(Date().timeIntervalSince($0)) }
+        backgroundEnteredAt = nil
+        LogManager.shared.log("ViewController: App returning to foreground after \(awaySeconds.map(String.init) ?? "?")s — resuming session (screen info + keyframe)")
+        // Reset the stream watchdog so suspended time isn't counted as silence.
+        networkListener?.noteForegroundResumed()
+        // Heartbeats resume automatically once active; the first authenticated
+        // message ends the sender's grace period. Refresh the sender's view of
+        // our screen and recover the picture without restarting the pipeline.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.sendScreenInfo()
+            self?.networkListener?.requestKeyframeThrottled(reason: "returned to foreground")
+        }
     }
 
     // MARK: - Screen Info (command 777)
 
-    /// Send screen dimensions to the sender so it can match the device's aspect ratio
+    /// Send full iPad screen dimensions to the sender so the Mac virtual display
+    /// remains stable even when iPadOS presents this app in a resizable window.
     func sendScreenInfo() {
-        let screen = UIScreen.main
-        let bounds = screen.bounds
-        let scale = screen.nativeScale
-        // Native pixel dimensions in current orientation
-        let width = Int(bounds.width * scale)
-        let height = Int(bounds.height * scale)
+        let screenSize = fullScreenPixelSizeForCurrentOrientation()
+        let width = Int(screenSize.width)
+        let height = Int(screenSize.height)
         LogManager.shared.log("ViewController: Sending screen info \(width)x\(height)")
         let event = InputEvent(type: .command, keyCode: 777, deltaX: Double(width), deltaY: Double(height))
         networkListener?.sendInputEvent(event)
+    }
+
+    private func fullScreenPixelSizeForCurrentOrientation() -> CGSize {
+        let nativeSize = UIScreen.main.nativeBounds.size
+        let longEdge = max(nativeSize.width, nativeSize.height)
+        let shortEdge = min(nativeSize.width, nativeSize.height)
+
+        return isCurrentInterfaceLandscape
+            ? CGSize(width: longEdge, height: shortEdge)
+            : CGSize(width: shortEdge, height: longEdge)
+    }
+
+    private var isCurrentInterfaceLandscape: Bool {
+        if #available(iOS 13.0, *), let orientation = view.window?.windowScene?.interfaceOrientation {
+            return orientation.isLandscape
+        }
+
+        let deviceOrientation = UIDevice.current.orientation
+        if deviceOrientation.isLandscape {
+            return true
+        }
+        if deviceOrientation.isPortrait {
+            return false
+        }
+
+        return UIScreen.main.bounds.width > UIScreen.main.bounds.height
     }
 
     @objc private func orientationChanged() {
@@ -408,6 +483,8 @@ class ViewController: UIViewController, NetworkListenerDelegate {
         }
     }
 
+    private var disconnectedTitleLabel: UILabel!
+
     private func setupDisconnectedNotice() {
         disconnectedNoticeView = UIView()
         disconnectedNoticeView.backgroundColor = UIColor.black.withAlphaComponent(0.78)
@@ -425,6 +502,7 @@ class ViewController: UIViewController, NetworkListenerDelegate {
         titleLabel.textAlignment = .center
         titleLabel.font = .systemFont(ofSize: 22, weight: .semibold)
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        disconnectedTitleLabel = titleLabel
 
         let subtitleLabel = UILabel()
         subtitleLabel.text = "Waiting for sender..."
@@ -454,13 +532,14 @@ class ViewController: UIViewController, NetworkListenerDelegate {
         ])
     }
 
-    private func showDisconnectedState() {
+    private func showDisconnectedState(lost: Bool = false) {
         isConnected = false
-        statusLabel.text = "Device disconnected"
+        disconnectedTitleLabel.text = lost ? "Connection lost" : "Device disconnected"
+        statusLabel.text = lost ? "Connection lost" : "Device disconnected"
         statusLabel.textColor = UIColor.white.withAlphaComponent(0.85)
         pulseView.layer.removeAllAnimations()
         pulseView.alpha = 1.0
-        pulseView.backgroundColor = UIColor.systemOrange
+        pulseView.backgroundColor = lost ? UIColor.systemRed : UIColor.systemOrange
 
         onboardingView.isHidden = false
         if onboardingView.alpha == 0 {
@@ -653,8 +732,12 @@ class ViewController: UIViewController, NetworkListenerDelegate {
     }
 
     private func setupShowSettingsGesture() {
+        // Local-only convenience gesture. It must never compete with or delay
+        // iPadOS system gestures — YC Cast is display-only and registers no
+        // other recognizers.
         let threeFingerTap = UITapGestureRecognizer(target: self, action: #selector(showSettingsButton))
         threeFingerTap.numberOfTouchesRequired = 3
+        threeFingerTap.cancelsTouchesInView = false
         view.addGestureRecognizer(threeFingerTap)
     }
 
@@ -710,10 +793,12 @@ class ViewController: UIViewController, NetworkListenerDelegate {
     
     // MARK: - NetworkListenerDelegate
     
-    func networkListener(_ listener: NetworkListenerIOS, didUpdateStatus status: String) {
-        if status.contains("Connected") {
+    func networkListener(_ listener: NetworkListenerIOS, didUpdate state: ReceiverState, statusText: String) {
+        statusLabel.text = statusText
+
+        switch state {
+        case .connected:
             hideDisconnectedNotice()
-            statusLabel.text = status
             // Stop pulse, show green dot, then dismiss onboarding
             pulseView.layer.removeAllAnimations()
             pulseView.alpha = 1.0
@@ -724,22 +809,22 @@ class ViewController: UIViewController, NetworkListenerDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                 self?.sendScreenInfo()
             }
-        } else if status == "Device disconnected" {
-            showDisconnectedState()
-        } else if status.contains("Waiting") || status.contains("Ready") {
-            statusLabel.text = status
+
+        case .connecting:
+            pulseView.backgroundColor = UIColor.systemOrange
+            if !isConnected { startPulseAnimation() }
+
+        case .waiting:
             if !isConnected {
                 pulseView.backgroundColor = UIColor(red: 0.4, green: 0.6, blue: 1.0, alpha: 1.0)
                 startPulseAnimation()
             }
-        } else if status.contains("Failed") {
-            // Network listener failed (e.g. simulator or network permission denied)
-            statusLabel.text = "Waiting for network access..."
-            pulseView.backgroundColor = UIColor.systemOrange
-            pulseView.layer.removeAllAnimations()
-            pulseView.alpha = 1.0
-        } else {
-            statusLabel.text = status
+
+        case .disconnected, .connectionLost:
+            // Never leave the last video frame on screen — replace it with the
+            // explicit disconnected/lost UI immediately.
+            renderer.clear()
+            showDisconnectedState(lost: state == .connectionLost)
         }
     }
     

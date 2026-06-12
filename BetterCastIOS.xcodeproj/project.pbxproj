@@ -19,6 +19,7 @@
 		BC100001000000000000000A /* LogManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC200001000000000000000A /* LogManager.swift */; };
 		BC100001000000000000000B /* MinimalViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC200001000000000000000B /* MinimalViewController.swift */; };
 		BC100001000000000000000C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BC200001000000000000000C /* Assets.xcassets */; };
+		BC100001000000000000000D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = BC200001000000000000000E /* LaunchScreen.storyboard */; };
 		BC1000020000000000000001 /* PrivateBetterCastConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC2000020000000000000001 /* PrivateBetterCastConstants.swift */; };
 		BC1000020000000000000002 /* PairingAuthenticator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC2000020000000000000002 /* PairingAuthenticator.swift */; };
 		BC1000020000000000000003 /* PairingSecretStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC2000020000000000000003 /* PairingSecretStore.swift */; };
@@ -74,6 +75,7 @@
 		BC200001000000000000000B /* MinimalViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MinimalViewController.swift; sourceTree = "<group>"; };
 		BC200001000000000000000C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		BC200001000000000000000D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		BC200001000000000000000E /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		BC2000020000000000000001 /* PrivateBetterCastConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivateBetterCastConstants.swift; sourceTree = "<group>"; };
 		BC2000020000000000000002 /* PairingAuthenticator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingAuthenticator.swift; sourceTree = "<group>"; };
 		BC2000020000000000000003 /* PairingSecretStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingSecretStore.swift; sourceTree = "<group>"; };
@@ -135,6 +137,7 @@
 			isa = PBXGroup;
 			children = (
 				BC200001000000000000000D /* Info.plist */,
+				BC200001000000000000000E /* LaunchScreen.storyboard */,
 				BC200001000000000000000C /* Assets.xcassets */,
 				BC2000010000000000000001 /* main.swift */,
 				BC2000010000000000000002 /* AppDelegate.swift */,
@@ -269,6 +272,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				BC100001000000000000000C /* Assets.xcassets in Resources */,
+				BC100001000000000000000D /* LaunchScreen.storyboard in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

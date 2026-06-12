@@ -5,6 +5,14 @@ import CoreMedia
 
 protocol VideoDecoderDelegate: AnyObject {
     func didDecode(sampleBuffer: CMSampleBuffer)
+    /// Called when a frame fails to decode (e.g. broken reference chain after a
+    /// dropped P-frame on a congested link). Gives the listener a chance to
+    /// request a fresh keyframe instead of showing artifacts until the next GOP.
+    func didFailToDecodeFrame(status: OSStatus)
+}
+
+extension VideoDecoderDelegate {
+    func didFailToDecodeFrame(status: OSStatus) {}
 }
 
 class VideoDecoder {
@@ -214,6 +222,7 @@ class VideoDecoder {
              
              if status != noErr {
                  LogManager.shared.log("VideoDecoder: Decode Fail \(status)")
+                 delegate?.didFailToDecodeFrame(status: status)
              }
          }
     }
@@ -228,8 +237,14 @@ private func decompressionCallback(
     presentationTimeStamp: CMTime,
     presentationDuration: CMTime
 ) {
-    guard status == noErr, let imageBuffer = imageBuffer, let refCon = decompressionOutputRefCon else { return }
+    guard let refCon = decompressionOutputRefCon else { return }
     let decoder = Unmanaged<VideoDecoder>.fromOpaque(refCon).takeUnretainedValue()
+    guard status == noErr, let imageBuffer = imageBuffer else {
+        if status != noErr {
+            decoder.delegate?.didFailToDecodeFrame(status: status)
+        }
+        return
+    }
     
     var sampleBuffer: CMSampleBuffer?
     var timing = CMSampleTimingInfo(duration: presentationDuration, presentationTimeStamp: presentationTimeStamp, decodeTimeStamp: .invalid)

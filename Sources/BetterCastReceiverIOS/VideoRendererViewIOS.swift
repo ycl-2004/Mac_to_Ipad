@@ -54,6 +54,12 @@ class VideoRendererViewIOS: UIView, VideoRendererIOS {
         videoLayer.enqueue(sampleBuffer)
     }
 
+    /// Remove the last decoded frame so a disconnected session never lingers
+    /// on screen looking like a frozen stream.
+    func clear() {
+        videoLayer.flushAndRemoveImage()
+    }
+
     /// Toggle between aspect-fill (full screen) and aspect-fit (letterbox)
     var isAspectFill: Bool = false {
         didSet {

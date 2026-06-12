@@ -59,6 +59,7 @@ let package = Package(
             name: "BetterCastReceiverIOS",
             dependencies: ["BetterCastShared"],
             path: "Sources/BetterCastReceiverIOS",
+            exclude: ["Assets.xcassets", "Info.plist", "LaunchScreen.storyboard"],
             linkerSettings: [
                 .linkedFramework("UIKit", .when(platforms: [.iOS])),
                 .linkedFramework("Network"),
